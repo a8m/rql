@@ -7,6 +7,9 @@
 	<a href="LICENSE">
 		<img src="https://img.shields.io/badge/license-MIT-blue.svg?style=flat-square" alt="LICENSE">
 	</a>
+	<a href="https://travis-ci.org/a8m/rql">
+		<img src="https://img.shields.io/travis/a8m/rql.svg?style=flat-square" alt="Build Status">
+	</a>
 </p>
 
 RQL is a resource query language for Go. It provides a simple and light-weight API for adding dynamic querying capabilities to web-applications that use SQL-based database. It functions as the connector between the HTTP handler and the DB engine, and manages all validations and translations for user inputs.
@@ -110,7 +113,7 @@ There are two options to build a parser, `rql.New(rql.Config)`, and `rql.MustNew
 var Parser = rql.MustNew(rql.Config{
 	// User if the resource we want to query.
 	Model: User{},
-	// Since we work with gorm, we want to use its cloumn-function, and not rql default.
+	// Since we work with gorm, we want to use its column-function, and not rql default.
 	// although, they are pretty the same.
 	ColumnFn: gorm.ToDBName,
 	// Use your own custom logger. This logger is used only in the building stage.
@@ -121,19 +124,19 @@ var Parser = rql.MustNew(rql.Config{
 	LimitMaxValue: 200,
 })
 ```
-rql uses reflection in the build process to detect the type of each field, and create a set of validation rules for each it. If one of the validation rules fails or rql encounters an unknown field, it returns an infomative error to the user. Don't worry about the usage of reflection, it happens only once when you build the parser.
-Let's go over the valiadtion rules:
+rql uses reflection in the build process to detect the type of each field, and create a set of validation rules for each it. If one of the validation rules fails or rql encounters an unknown field, it returns an informative error to the user. Don't worry about the usage of reflection, it happens only once when you build the parser.
+Let's go over the validation rules:
 1. `int` (8,16,32,64), `sql.NullInt6` - Round number
 2. `uint` (8,16,32,64), `uintptr` - Round number and greater than or equal to 0
 3. `float` (32,64), sql.NullFloat64: - Number
 4. `bool`, `sql.NullBool` - Boolean
 5. `string`, `sql.NullString` - String
-6. `time.Time`, and other types that covertiable to `time.Time` - time.RFC3339 format (JS format), and parsable to `time.Time`.
+6. `time.Time`, and other types that convertible to `time.Time` - time.RFC3339 format (JS format), and parsable to `time.Time`.
 
 Note that all rules are applied to pointers as well. It means, if you have a field `Name *string` in your struct, we still use the string validation rule for it.
 
 ### User API
-We cosider developers as the users of this API (usually FE developers). Let's go over the JSON API we export for resources.  
+We consider developers as the users of this API (usually FE developers). Let's go over the JSON API we export for resources.  
 The top-level query accepts JSON with 4 fields: `offset`, `limit`, `filter` and `sort`. All of them are optional.
 
 #### `offset` and `limit`
@@ -150,7 +153,7 @@ Result is - address_name, address_zip_code DESC, age ASC
 ```
 
 #### `filter`
-Filter is the one who is translated to the SQL `WHERE` clause. This object that contains `filterable` fields or the disjunction (`$or`) operator. Each field in the object represents a condition in the `WHERE` caluse. It contains a specific value that matched the type of the field or an object of predicates. Let's go over them:
+Filter is the one who is translated to the SQL `WHERE` clause. This object that contains `filterable` fields or the disjunction (`$or`) operator. Each field in the object represents a condition in the `WHERE` clause. It contains a specific value that matched the type of the field or an object of predicates. Let's go over them:
 - Field follows the format: `field: <value>`, means the predicate that will be used is `=`. For example:
   ```
   For input:
@@ -189,7 +192,7 @@ Filter is the one who is translated to the SQL `WHERE` clause. This object that 
   
   Result is: city = ? OR (zip >= ? AND zip <= ?)
   ```
-To simplfy that, the rule is `AND` for objects and `OR` for arrays. Let's go over the list of supported predicates and then we'll show a few examples.
+To simplify that, the rule is `AND` for objects and `OR` for arrays. Let's go over the list of supported predicates and then we'll show a few examples.
 
 ##### Predicates
 - `$eq` and `$neq` - can be used on all types
@@ -303,7 +306,7 @@ fmt.Println(params.FilterArgs)	// [true, Time(2018-01-01T16:00:00.000Z), Time(20
 
 
 ## Future Plans and Contributions
-If you want to help with the develoment of this package, here is a list of options things I want to add
+If you want to help with the development of this package, here is a list of options things I want to add
 - [ ] `.github` file for PRs - make sure people run tests (including integration tests)
 - [ ] `.travis` for build - Run the integration tests here as well
 - [ ] JS library for query building
@@ -326,7 +329,7 @@ If you want to help with the develoment of this package, here is a list of optio
 - [ ] Code generation version - low priority
 
 ## Performance and Reliability
-The performance of RQL looks pretty good, but there is always room for improvment. Here's the current bench result:
+The performance of RQL looks pretty good, but there is always a room for improvement. Here's the current bench result:
 
 |      __Test__       | __Time/op__    | __B/op__   | __allocs/op__  |
 |---------------------|----------------|------------|----------------|
