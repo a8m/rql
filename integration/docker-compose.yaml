@@ -1,0 +1,21 @@
+version: '3'
+services:
+  
+  integration:
+    build: .
+    environment:
+      - CONN_STRING=root:pass@tcp(mysql:3306)/test
+    depends_on:
+      - mysql
+    volumes:
+      - ../:/go/src/github.com/a8m/rql
+    command: ['go', 'test', '-v', 'github.com/a8m/rql/integration']
+
+  mysql:
+    image: mariadb:10.3.6
+    command: --event-scheduler=ON
+    environment:
+      MYSQL_ROOT_PASSWORD: pass
+      MYSQL_DATABASE: test
+    healthcheck:
+      test: mysql -ppass -e "show databases"
