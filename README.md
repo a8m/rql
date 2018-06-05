@@ -235,7 +235,7 @@ params, err := QueryParser.Parse([]byte(`{
   "limit": 25,
   "offset": 0,
   "filter": {
-    "admin": false,
+    "admin": false
   }
   "sort": ["+name"]
 }`))
@@ -261,17 +261,17 @@ err := db.Where(p.FilterExp, p.FilterArgs).
 must(err, "failed to query gorm")
 
 // xorm
-err := engine.Where(p.FilterExp, p.FilterArgs...)
-	.Limit(p.Limit, p.Offset)
-	.OrderBy(p.Sort)
-	.Find(&beans)
+err := engine.Where(p.FilterExp, p.FilterArgs...).
+	Limit(p.Limit, p.Offset).
+	OrderBy(p.Sort).
+	Find(&users)
 must(err, "failed to query xorm")
 
 // go-pg/pg
 err := db.Model(&users).
 	Where(p.FilterExp, p.FilterArgs).
 	Offset(p.Offest).
-	Limit(p.Limit)
+	Limit(p.Limit).
 	Order(p.Sort).
 	Select()
 must(err, "failed to query pg/orm")
