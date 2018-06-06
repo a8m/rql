@@ -81,9 +81,9 @@ type Config struct {
 	Model interface{}
 	// OpPrefix is the prefix for operators. it defaults to "$". for example, in order
 	// to use the "gt" (greater-than) operator, you need to prefix it with "$".
-	// It similar to the MongoDB query langauge.
+	// It similar to the MongoDB query language.
 	OpPrefix string
-	// FieldSep is the seperator for nested fields in a struct. For example, given the following struct:
+	// FieldSep is the separator for nested fields in a struct. For example, given the following struct:
 	//
 	//	type User struct {
 	// 		Name 	string	`rql:"filter"`
@@ -93,7 +93,7 @@ type Config struct {
 	// 	}
 	//
 	// We assume the schema for this struct contains a column named "address_city". Therefore, the default
-	// seperator is underscore ("_"). But, you can change it to "." for convenience or readability reasons.
+	// separator is underscore ("_"). But, you can change it to "." for convenience or readability reasons.
 	// Then you will be able to query your resource like this:
 	//
 	//	{
