@@ -106,8 +106,8 @@ Go to [examples/simple](examples/simple.go) to see the full working example.
 
 
 ## API
-In order to start using rql, you need to configure your parser. Let's go over a basic example of how to configure a parser. For more details and updated documentation, please checkout the [godoc](https://godoc.org/github.com/a8m/rql/#Config).  
-There are two options to build a parser, `rql.New(rql.Config)`, and `rql.MustNew(rql.Config)`. The only different between the two is that `rql.New` returns an error if the configuration is invalid, and `rql.MustNew` panics.
+In order to start using rql, you need to configure your parser. Let's go over a basic example of how to do this. For more details and updated documentation, please checkout the [godoc](https://godoc.org/github.com/a8m/rql/#Config).  
+There are two options to build a parser, `rql.New(rql.Config)`, and `rql.MustNew(rql.Config)`. The only difference between the two is that `rql.New` returns an error if the configuration is invalid, and `rql.MustNew` panics.
 ```go
 // we use rql.MustPanic because we don't want to deal with error handling in top level declarations.
 var Parser = rql.MustNew(rql.Config{
@@ -124,7 +124,7 @@ var Parser = rql.MustNew(rql.Config{
 	LimitMaxValue: 200,
 })
 ```
-rql uses reflection in the build process to detect the type of each field, and create a set of validation rules for each it. If one of the validation rules fails or rql encounters an unknown field, it returns an informative error to the user. Don't worry about the usage of reflection, it happens only once when you build the parser.
+rql uses reflection in the build process to detect the type of each field, and create a set of validation rules for each one. If one of the validation rules fails or rql encounters an unknown field, it returns an informative error to the user. Don't worry about the usage of reflection, it happens only once when you build the parser.
 Let's go over the validation rules:
 1. `int` (8,16,32,64), `sql.NullInt6` - Round number
 2. `uint` (8,16,32,64), `uintptr` - Round number and greater than or equal to 0
