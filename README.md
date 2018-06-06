@@ -307,6 +307,7 @@ fmt.Println(params.FilterArgs)	// [true, Time(2018-01-01T16:00:00.000Z), Time(20
 
 ## Future Plans and Contributions
 If you want to help with the development of this package, here is a list of options things I want to add
+- [ ] Support vgo
 - [ ] `.github` file for PRs - make sure people run tests (including integration tests)
 - [ ] `.travis` for build - Run the integration tests here as well
 - [ ] JS library for query building
