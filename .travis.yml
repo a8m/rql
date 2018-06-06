@@ -6,5 +6,5 @@ services:
 go:
   - tip
 scripts:
-  - go test
+  - go test -v github.com/a8m/rql
   - cd integration && make test
