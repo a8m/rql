@@ -13,7 +13,6 @@ services:
 
   mysql:
     image: mariadb:10.3.6
-    command: --event-scheduler=ON
     environment:
       MYSQL_ROOT_PASSWORD: pass
       MYSQL_DATABASE: test
