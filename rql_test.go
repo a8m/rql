@@ -465,7 +465,7 @@ func TestParse(t *testing.T) {
 			},
 		},
 		{
-			name: "sort with default field seperator",
+			name: "sort with default field separator",
 			conf: Config{
 				Model: struct {
 					Age     int    `rql:"filter,sort"`
