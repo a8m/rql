@@ -339,18 +339,5 @@ The performance of RQL looks pretty good, but there is always a room for improve
 
 I ran fuzzy testing using `go-fuzz` and I didn't see any crashes. You are welcome to run by yourself and find potential failures. 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+## LICENSE
+I am providing code in the repository to you under MIT license. Because this is my personal repository, the license you receive to my code is from me and not my employer (Facebook)
