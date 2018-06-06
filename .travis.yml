@@ -1,5 +1,10 @@
 language: go
+
+services:
+  - docker
+
 go:
   - tip
 scripts:
   - go test
+  - cd integration && make test
