@@ -425,7 +425,7 @@ func (p *Parser) fmtOp(field string, op Op) string {
 }
 
 // colName formats the query field to database column name in cases the user configured a custom
-// field seperator. for example: if the user configured the field seperator to be ".", the fields
+// field separator. for example: if the user configured the field separator to be ".", the fields
 // like "address.name" will be changed to "address_name".
 func (p *Parser) colName(field string) string {
 	if p.FieldSep != DefaultFieldSep {
