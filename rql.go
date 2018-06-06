@@ -49,7 +49,6 @@ type Query struct {
 	Filter map[string]interface{} `json:"filter,omitempty"`
 }
 
-// Params is the parser output that represents a parsed query params.
 // Params is the parser output after calling to `Parse`. You should pass its
 // field values to your query tool. For example, Suppose you use `gorm`:
 //
@@ -102,14 +101,14 @@ type field struct {
 	Filterable bool
 	// All supported operators for this field.
 	FilterOps map[string]bool
-	// Validation for the type. for example, unit greater than 0.
+	// Validation for the type. for example, unit8 greater than or equal to 0.
 	ValidateFn func(interface{}) error
 	// ConvertFn converts the given value to the type value.
 	CovertFn func(interface{}) interface{}
 }
 
-// A Parser parses various type. The result from the parse is a Param object.
-// A Parser is safe for concurrent use by multiple goroutines, except for configuration changes.
+// A Parser parses various types. The result from the Parse method is a Param object.
+// It is safe for concurrent use by multiple goroutines except for configuration changes.
 type Parser struct {
 	Config
 	fields map[string]*field
@@ -129,7 +128,7 @@ func NewParser(c Config) (*Parser, error) {
 }
 
 // MustNewParser is like NewParser but panics if the configuration is invalid.
-// It simplifies safe initialization of global variables holding a a resource parser.
+// It simplifies safe initialization of global variables holding a resource parser.
 func MustNewParser(c Config) *Parser {
 	p, err := NewParser(c)
 	if err != nil {
@@ -171,7 +170,7 @@ func (p *Parser) Parse(b []byte) (pr *Params, err error) {
 	return
 }
 
-// Column is the default function that converts names into database column.
+// Column is the default function that converts field name into a database column.
 // It used to convert the struct fields into their database names. For example:
 //
 //	Username => username
