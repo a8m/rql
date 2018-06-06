@@ -339,7 +339,7 @@ func TestParse(t *testing.T) {
 			wantOut: &Params{
 				Limit:      25,
 				FilterExp:  "null_int64 = ? AND ptr_null_int64 = ? AND null_float64 = ? AND ptr_null_float64 = ? AND null_string = ? AND ptr_null_string = ?",
-				FilterArgs: []interface{}{1, 1, 1, 1, "", ""},
+				FilterArgs: []interface{}{1, 1, 1.0, 1.0, "", ""},
 			},
 		},
 		{
@@ -788,9 +788,8 @@ func TestParse(t *testing.T) {
 	}
 }
 
-// AssertQueryEqual tests if two query input are equal
-// TODO: I don't like the current implementation. it wastes too much space,
-// and provides inconsistent results.
+// AssertQueryEqual tests if two query input are equal.
+// TODO: improve this in the future.
 func assertParams(t *testing.T, got *Params, want *Params) {
 	if got == nil && want == nil {
 		return
@@ -804,25 +803,22 @@ func assertParams(t *testing.T, got *Params, want *Params) {
 	if got.Sort != want.Sort {
 		t.Fatalf("sort: got: %q want %q", got.Sort, want.Sort)
 	}
-	if !equalExp(got.FilterExp, want.FilterExp) {
+	if !equalExp(got.FilterExp, want.FilterExp) || !equalExp(want.FilterExp, got.FilterExp) {
 		t.Fatalf("filter expr:\n\tgot: %q\n\twant %q", got.FilterExp, want.FilterExp)
 	}
-	if !equalExp(want.FilterExp, got.FilterExp) {
-		t.Fatalf("filter expr:\n\tgot: %q\n\twant %q", got.FilterExp, want.FilterExp)
-	}
-	if !equalArgs(got.FilterArgs, got.FilterArgs) {
-		t.Fatalf("filter args:\n\tgot: %v\n\twant %v", got.FilterArgs, want.FilterArgs)
-	}
-	if !equalArgs(want.FilterArgs, got.FilterArgs) {
+	if !equalArgs(got.FilterArgs, got.FilterArgs) || !equalArgs(want.FilterArgs, got.FilterArgs) {
 		t.Fatalf("filter args:\n\tgot: %v\n\twant %v", got.FilterArgs, want.FilterArgs)
 	}
 }
 
 func equalArgs(a, b []interface{}) bool {
+	seen := make([]bool, len(b))
 	for _, arg1 := range a {
 		var found bool
-		for _, arg2 := range b {
-			if reflect.DeepEqual(arg1, arg2) {
+		for i, arg2 := range b {
+			// skip values that matched before.
+			if !seen[i] && reflect.DeepEqual(arg1, arg2) {
+				seen[i] = true
 				found = true
 				break
 			}
