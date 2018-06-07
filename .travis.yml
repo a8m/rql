@@ -8,8 +8,6 @@ go:
 services:
   - docker
 
-before_script: cd integration
-
 script:
-  - go test -v ../
-  - make test
+  - go test -v
+  - make -C integration test
