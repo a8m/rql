@@ -1,7 +1,15 @@
+sudo: required
 language: go
 
 go:
   - "1.10.x"
   - master
-  
-script: go test -v
+
+services:
+  - docker
+
+before_script: cd integration
+
+script:
+  - go test -v ../
+  - make test
