@@ -12,7 +12,7 @@
 	</a>
 </p>
 
-RQL is a resource query language for Go. It provides a simple and light-weight API for adding dynamic querying capabilities to web-applications that use SQL-based database. It functions as the connector between the HTTP handler and the DB engine, and manages all validations and translations for user inputs.
+RQL is a resource query language for REST. It provides a simple and light-weight API for adding dynamic querying capabilities to web-applications that use SQL-based database. It functions as the connector between the HTTP handler and the DB engine, and manages all validations and translations for user inputs.
 
 <p align="center">
   <img src="assets/diagram.png" alt="rql diagram">
