@@ -16,7 +16,7 @@ import (
 
 var (
 	db *gorm.DB
-	// QueryParam is the of the query string key.
+	// QueryParam is the name of the query string key.
 	queryParam = "query"
 	// MustNewParser panics if the configuration is invalid.
 	queryParser = rql.MustNewParser(rql.Config{
@@ -43,7 +43,7 @@ func main() {
 	must(db.Create(&User{Name: "test"}).Error, "create test user")
 	http.HandleFunc("/users", GetUsers)
 	log.Fatal(http.ListenAndServe(":8080", nil))
-	// Now, go to your terminal and run the folllowing commad to test the application:
+	// Now, go to your terminal and run the folllowing commad in order to test the application:
 	// curl --request POST --data '{"filter": {"name": {"$like": "t%st"}}}' http://localhost:8080/users
 }
 
@@ -72,7 +72,7 @@ func GetUsers(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 }
 
-// getDBQuery extract the query blob from either the body or the query string
+// getDBQuery extracts the query blob from either the body or the query string
 // and execute the parser.
 func getDBQuery(r *http.Request) (*rql.Params, error) {
 	var (
