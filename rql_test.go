@@ -100,6 +100,7 @@ func TestInit(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			_, err := NewParser(Config{
 				Model: tt.model,
+				Log:   t.Logf,
 			})
 			if tt.wantErr != (err != nil) {
 				t.Fatalf("want: %v\ngot:%v\nerr: %v", tt.wantErr, err != nil, err)
@@ -775,6 +776,7 @@ func TestParse(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			tt.conf.Log = t.Logf
 			p, err := NewParser(tt.conf)
 			if err != nil {
 				t.Fatalf("failed to build parser: %v", err)
