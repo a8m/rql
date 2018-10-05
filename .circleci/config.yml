@@ -1,0 +1,29 @@
+version: 2
+jobs:
+  unit:
+    docker:
+    - image: circleci/golang:1.11
+    working_directory: /go/src/github.com/a8m/rql
+    steps:
+    - checkout
+    - run: go get -v -t -d ./...
+    - run: go test -v
+
+  integration:
+    machine:
+      image: circleci/classic:201808-01
+    working_directory: /home/circleci/.go_workspace/src/github.com/a8m/rql
+    environment:
+      GOPATH: /home/circleci/.go_workspace
+    steps:
+    - checkout
+    - run: make -C integration test
+
+workflows:
+  version: 2
+  all:
+    jobs:
+    - unit
+    - integration:
+        requires:
+        - unit
