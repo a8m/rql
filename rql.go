@@ -102,9 +102,9 @@ type field struct {
 	// All supported operators for this field.
 	FilterOps map[string]bool
 	// Validation for the type. for example, unit8 greater than or equal to 0.
-	ValidateFn func(interface{}) error
+	ValidateFn func(interface{}, Op) error
 	// ConvertFn converts the given value to the type value.
-	CovertFn func(interface{}) interface{}
+	CovertFn func(interface{}, Op) interface{}
 }
 
 // A Parser parses various types. The result from the Parse method is a Param object.
@@ -239,18 +239,18 @@ func (p *Parser) parseField(sf reflect.StructField) {
 		filterOps = append(filterOps, EQ, NEQ)
 	case reflect.String:
 		f.ValidateFn = validateString
-		filterOps = append(filterOps, EQ, NEQ, LIKE)
+		filterOps = append(filterOps, EQ, NEQ, LIKE, IN, NIN)
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 		f.ValidateFn = validateInt
 		f.CovertFn = convertInt
-		filterOps = append(filterOps, EQ, NEQ, LT, LTE, GT, GTE)
+		filterOps = append(filterOps, EQ, NEQ, LT, LTE, GT, GTE, IN, NIN)
 	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
 		f.ValidateFn = validateUInt
 		f.CovertFn = convertInt
-		filterOps = append(filterOps, EQ, NEQ, LT, LTE, GT, GTE)
+		filterOps = append(filterOps, EQ, NEQ, LT, LTE, GT, GTE, IN, NIN)
 	case reflect.Float32, reflect.Float64:
 		f.ValidateFn = validateFloat
-		filterOps = append(filterOps, EQ, NEQ, LT, LTE, GT, GTE)
+		filterOps = append(filterOps, EQ, NEQ, LT, LTE, GT, GTE, IN, NIN)
 	case reflect.Struct:
 		switch v := reflect.Zero(typ); v.Interface().(type) {
 		case sql.NullBool:
@@ -262,19 +262,19 @@ func (p *Parser) parseField(sf reflect.StructField) {
 		case sql.NullInt64:
 			f.ValidateFn = validateInt
 			f.CovertFn = convertInt
-			filterOps = append(filterOps, EQ, NEQ, LT, LTE, GT, GTE)
+			filterOps = append(filterOps, EQ, NEQ, LT, LTE, GT, GTE, IN, NIN)
 		case sql.NullFloat64:
 			f.ValidateFn = validateFloat
-			filterOps = append(filterOps, EQ, NEQ, LT, LTE, GT, GTE)
+			filterOps = append(filterOps, EQ, NEQ, LT, LTE, GT, GTE, IN, NIN)
 		case time.Time:
 			f.ValidateFn = validateTime
 			f.CovertFn = convertTime
-			filterOps = append(filterOps, EQ, NEQ, LT, LTE, GT, GTE)
+			filterOps = append(filterOps, EQ, NEQ, LT, LTE, GT, GTE, IN, NIN)
 		default:
 			if v.Type().ConvertibleTo(reflect.TypeOf(time.Time{})) {
 				f.ValidateFn = validateTime
 				f.CovertFn = convertTime
-				filterOps = append(filterOps, EQ, NEQ, LT, LTE, GT, GTE)
+				filterOps = append(filterOps, EQ, NEQ, LT, LTE, GT, GTE, IN, NIN)
 			} else {
 				p.Log("the type for field %q is not supported", sf.Name)
 				return
@@ -394,9 +394,9 @@ func (p *parseState) field(f *field, v interface{}) {
 	terms, ok := v.(map[string]interface{})
 	// default equality check.
 	if !ok {
-		must(f.ValidateFn(v), "invalid datatype for field %q", f.Name)
+		must(f.ValidateFn(v, EQ), "invalid datatype for field %q", f.Name)
 		p.WriteString(p.fmtOp(f.Name, EQ))
-		p.values = append(p.values, f.CovertFn(v))
+		p.values = append(p.values, f.CovertFn(v, EQ))
 	}
 	var i int
 	if len(terms) > 1 {
@@ -407,9 +407,10 @@ func (p *parseState) field(f *field, v interface{}) {
 			p.WriteString(" AND ")
 		}
 		expect(f.FilterOps[opName], "can not apply op %q on field %q", opName, f.Name)
-		must(f.ValidateFn(opVal), "invalid datatype for field %q", f.Name)
-		p.WriteString(p.fmtOp(f.Name, Op(opName[1:])))
-		p.values = append(p.values, f.CovertFn(opVal))
+		op := Op(opName[1:])
+		must(f.ValidateFn(opVal, op), "invalid datatype for field %q", f.Name)
+		p.WriteString(p.fmtOp(f.Name, op))
+		p.values = append(p.values, f.CovertFn(opVal, op))
 		i++
 	}
 	if len(terms) > 1 {
@@ -472,7 +473,7 @@ func errorType(v interface{}, expected string) error {
 }
 
 // validate that the underlined element of given interface is a boolean.
-func validateBool(v interface{}) error {
+func validateBool(v interface{}, op Op) error {
 	if _, ok := v.(bool); !ok {
 		return errorType(v, "bool")
 	}
@@ -480,7 +481,20 @@ func validateBool(v interface{}) error {
 }
 
 // validate that the underlined element of given interface is a string.
-func validateString(v interface{}) error {
+func validateString(v interface{}, op Op) error {
+	if op == NIN || op == IN {
+		vals, ok := v.([]interface{})
+		if !ok {
+			return errorType(v, "[]string")
+		}
+		for _, raw := range vals {
+			_, ok := raw.(string)
+			if !ok {
+				return errorType(v, "[]string")
+			}
+		}
+		return nil
+	}
 	if _, ok := v.(string); !ok {
 		return errorType(v, "string")
 	}
@@ -488,7 +502,20 @@ func validateString(v interface{}) error {
 }
 
 // validate that the underlined element of given interface is a float.
-func validateFloat(v interface{}) error {
+func validateFloat(v interface{}, op Op) error {
+	if op == NIN || op == IN {
+		nums, ok := v.([]interface{})
+		if !ok {
+			return errorType(v, "[]float64")
+		}
+		for _, raw := range nums {
+			_, ok := raw.(float64)
+			if !ok {
+				return errorType(v, "[]float64")
+			}
+		}
+		return nil
+	}
 	if _, ok := v.(float64); !ok {
 		return errorType(v, "float64")
 	}
@@ -496,7 +523,23 @@ func validateFloat(v interface{}) error {
 }
 
 // validate that the underlined element of given interface is an int.
-func validateInt(v interface{}) error {
+func validateInt(v interface{}, op Op) error {
+	if op == NIN || op == IN {
+		nums, ok := v.([]interface{})
+		if !ok {
+			return errorType(v, "[]int")
+		}
+		for _, raw := range nums {
+			n, ok := raw.(float64)
+			if !ok {
+				return errorType(v, "[]int")
+			}
+			if math.Trunc(n) != n {
+				return errors.New("contains a non-integer")
+			}
+		}
+		return nil
+	}
 	n, ok := v.(float64)
 	if !ok {
 		return errorType(v, "int")
@@ -508,18 +551,52 @@ func validateInt(v interface{}) error {
 }
 
 // validate that the underlined element of given interface is an int and greater than 0.
-func validateUInt(v interface{}) error {
-	if err := validateInt(v); err != nil {
-		return err
+func validateUInt(v interface{}, op Op) error {
+	if op == NIN || op == IN {
+		nums, ok := v.([]interface{})
+		if !ok {
+			return errorType(v, "[]int")
+		}
+		for _, raw := range nums {
+			n, ok := raw.(float64)
+			if !ok {
+				return errorType(v, "[]int")
+			}
+			if math.Trunc(n) != n || n < 0 {
+				return errors.New("contains a non unsigned integer")
+			}
+		}
+		return nil
 	}
-	if v.(float64) < 0 {
+	n, ok := v.(float64)
+	if !ok {
+		return errorType(v, "int")
+	}
+	if math.Trunc(n) != n || n < 0 {
 		return errors.New("not an unsigned integer")
 	}
 	return nil
 }
 
 // validate that the underlined element of this interface is a "datetime" string.
-func validateTime(v interface{}) error {
+func validateTime(v interface{}, op Op) error {
+	if op == NIN || op == IN {
+		times, ok := v.([]interface{})
+		if !ok {
+			return errorType(v, "[]string")
+		}
+		for _, raw := range times {
+			s, ok := raw.(string)
+			if !ok {
+				return errorType(v, "[]string")
+			}
+			if _, err := time.Parse(time.RFC3339, s); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+
 	s, ok := v.(string)
 	if !ok {
 		return errorType(v, "string")
@@ -529,17 +606,36 @@ func validateTime(v interface{}) error {
 }
 
 // convert float to int.
-func convertInt(v interface{}) interface{} {
+func convertInt(v interface{}, op Op) interface{} {
+	if op == NIN || op == IN {
+		nums, _ := v.([]interface{})
+		out := make([]int, 0, len(nums))
+		for _, n := range nums {
+			out = append(out, int(n.(float64)))
+		}
+		return out
+	}
 	return int(v.(float64))
 }
 
 // convert string to time object.
-func convertTime(v interface{}) interface{} {
+func convertTime(v interface{}, op Op) interface{} {
+	if op == NIN || op == IN {
+		times, _ := v.([]interface{})
+
+		out := make([]time.Time, 0, len(times))
+		for _, s := range times {
+			t, _ := time.Parse(time.RFC3339, s.(string))
+			out = append(out, t)
+		}
+		return out
+	}
+
 	t, _ := time.Parse(time.RFC3339, v.(string))
 	return t
 }
 
 // nop converter.
-func valueFn(v interface{}) interface{} {
+func valueFn(v interface{}, op Op) interface{} {
 	return v
 }
