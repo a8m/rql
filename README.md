@@ -196,7 +196,7 @@ To simplify that, the rule is `AND` for objects and `OR` for arrays. Let's go ov
 
 ##### Predicates
 - `$eq` and `$neq` - can be used on all types
-- `$gt`, `$lt`, `$gte` and `$lte` - can be used only on numbers, and timestamp
+- `$gt`, `$lt`, `$gte` and `$lte` - can be used on numbers, strings, and timestamp
 - `$like` - can be used only on type string
 
 If a user tries to apply an unsupported predicate on a field it will get an informative error. For example:
@@ -307,7 +307,6 @@ fmt.Println(params.FilterArgs)	// [true, Time(2018-01-01T16:00:00.000Z), Time(20
 
 ## Future Plans and Contributions
 If you want to help with the development of this package, here is a list of options things I want to add
-- [ ] Support vgo
 - [ ] JS library for query building
 - [ ] Option to ignore validation with specific tag
 - [ ] Add `$not` and `$nor` operators
