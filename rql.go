@@ -239,7 +239,7 @@ func (p *Parser) parseField(sf reflect.StructField) {
 		filterOps = append(filterOps, EQ, NEQ)
 	case reflect.String:
 		f.ValidateFn = validateString
-		filterOps = append(filterOps, EQ, NEQ, LIKE)
+		filterOps = append(filterOps, EQ, NEQ, LT, LTE, GT, GTE, LIKE)
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 		f.ValidateFn = validateInt
 		f.CovertFn = convertInt
