@@ -27,6 +27,8 @@ type User struct {
 	Name        string    `rql:"filter"`
 	AddressName string    `rql:"filter"`
 	CreatedAt   time.Time `rql:"filter"`
+	UnixTime    time.Time `rql:"filter,layout=UnixDate"`
+	CustomTime  time.Time `rql:"filter,layout=2006-01-02 15:04"`
 }
 
 func TestMySQL(t *testing.T) {
@@ -46,6 +48,10 @@ func TestMySQL(t *testing.T) {
 	AssertCount(t, db, 1, `{ "filter": {"address_name": "address_1" } }`)   // 1st user
 	AssertCount(t, db, 100, fmt.Sprintf(`{"filter": {"created_at": { "$gt": %q } } }`, CreateTime.Add(-time.Hour).Format(time.RFC3339)))
 	AssertCount(t, db, 100, fmt.Sprintf(`{"filter": {"created_at": { "$lte": %q } } }`, CreateTime.Add(time.Hour).Format(time.RFC3339)))
+	AssertCount(t, db, 100, fmt.Sprintf(`{"filter": {"unix_time": { "$gt": %q } } }`, CreateTime.Add(-time.Hour).Format(time.UnixDate)))
+	AssertCount(t, db, 100, fmt.Sprintf(`{"filter": {"unix_time": { "$lte": %q } } }`, CreateTime.Add(time.Hour).Format(time.UnixDate)))
+	AssertCount(t, db, 100, fmt.Sprintf(`{"filter": {"custom_time": { "$gt": %q } } }`, CreateTime.Add(-time.Hour).Format("2006-01-02 15:04")))
+	AssertCount(t, db, 100, fmt.Sprintf(`{"filter": {"custom_time": { "$lte": %q } } }`, CreateTime.Add(time.Hour).Format("2006-01-02 15:04")))
 	AssertMatchIDs(t, db, []int{1}, `{ "filter": { "id": 1 } }`)
 	AssertMatchIDs(t, db, []int{2, 3}, `{ "filter": { "$or": [ { "id": 2 }, { "id": 3 } ] } }`)
 	AssertMatchIDs(t, db, []int{3, 2}, `{ "filter": { "$or": [ { "id": 2 }, { "id": 3 } ] }, "sort": ["-id"] }`)
@@ -59,7 +65,7 @@ func AssertCount(t *testing.T, db *gorm.DB, expected int, query string) {
 	err = db.Model(User{}).Where(params.FilterExp, params.FilterArgs...).Count(&count).Error
 	must(t, err, "count users")
 	if count != expected {
-		t.Errorf("AssertCount:\n\twant: %d\n\tgot: %d", expected, count)
+		t.Errorf("AssertCount: %s\n\twant: %d\n\tgot: %d", query, expected, count)
 	}
 }
 
@@ -108,7 +114,9 @@ func SetUp(t *testing.T, db *gorm.DB) {
 				Admin:       i%2 == 0,
 				Name:        fmt.Sprintf("user_%d", i),
 				AddressName: fmt.Sprintf("address_%d", i),
-				CreatedAt:   CreateTime.Add(time.Minute * 1),
+				CreatedAt:   CreateTime.Add(time.Minute),
+				UnixTime:    CreateTime.Add(time.Minute),
+				CustomTime:  CreateTime.Add(time.Minute),
 			}).Error
 			must(t, err, "create user")
 		}(i)
