@@ -35,10 +35,11 @@ func TestInit(t *testing.T) {
 			}),
 		},
 		{
-			name: "ignore unsupported types",
+			name: "return an error for unsupported types",
 			model: new(struct {
 				Age interface{} `rql:"filter"`
 			}),
+			wantErr: true,
 		},
 		{
 			name:    "model is mandatory",
@@ -94,6 +95,13 @@ func TestInit(t *testing.T) {
 					JobType JobType `rql:"filter,sort"`
 				}{}
 			})(),
+		},
+		{
+			name: "time format",
+			model: new(struct {
+				CreatedAt time.Time `rql:"filter,layout=2006-01-02 15:04"`
+				UpdatedAt time.Time `rql:"filter,layout=Kitchen"`
+			}),
 		},
 	}
 	for _, tt := range tests {
@@ -248,22 +256,6 @@ func TestParse(t *testing.T) {
 			},
 		},
 		{
-			name: "ignore unsupported struct",
-			conf: Config{
-				Model: struct {
-					strings.Reader   `rql:"filter"`
-					*strings.Builder `rql:"filter"`
-				}{},
-				DefaultLimit: 25,
-			},
-			input: []byte(`{}`),
-			wantOut: &Params{
-				Limit:      25,
-				FilterExp:  "",
-				FilterArgs: []interface{}{},
-			},
-		},
-		{
 			name: "type alias",
 			conf: Config{
 				Model: (func() interface{} {
@@ -369,10 +361,10 @@ func TestParse(t *testing.T) {
 				Limit:     25,
 				FilterExp: "created_at = ? AND updated_at = ? AND swagger_date = ? AND ptr_swagger_date = ?",
 				FilterArgs: []interface{}{
-					mustParseTime("2018-01-14T06:05:48.839Z"),
-					mustParseTime("2018-01-14T06:05:48.839Z"),
-					mustParseTime("2018-01-14T06:05:48.839Z"),
-					mustParseTime("2018-01-14T06:05:48.839Z"),
+					mustParseTime(time.RFC3339, "2018-01-14T06:05:48.839Z"),
+					mustParseTime(time.RFC3339, "2018-01-14T06:05:48.839Z"),
+					mustParseTime(time.RFC3339, "2018-01-14T06:05:48.839Z"),
+					mustParseTime(time.RFC3339, "2018-01-14T06:05:48.839Z"),
 				},
 			},
 		},
@@ -433,7 +425,7 @@ func TestParse(t *testing.T) {
 			wantOut: &Params{
 				Limit:      25,
 				FilterExp:  "created_at > ? AND work_address LIKE ? AND (work_salary = ? OR (work_salary >= ? AND work_salary <= ?))",
-				FilterArgs: []interface{}{mustParseTime("2018-01-14T06:05:48.839Z"), "%DC%", 100, 200, 300},
+				FilterArgs: []interface{}{mustParseTime(time.RFC3339, "2018-01-14T06:05:48.839Z"), "%DC%", 100, 200, 300},
 			},
 		},
 		{
@@ -540,6 +532,56 @@ func TestParse(t *testing.T) {
 				FilterExp:  "id = ? AND full_name = ? AND http_url = ? AND nested_struct_uuid = ?",
 				FilterArgs: []interface{}{"id", "full_name", "http_url", "uuid"},
 			},
+		},
+		{
+			name: "time unix layout",
+			conf: Config{
+				Model: new(struct {
+					CreatedAt time.Time `rql:"filter,layout=UnixDate"`
+				}),
+			},
+			input: []byte(`{
+				"filter": {
+					"created_at": { "$gt": "Thu May 23 09:30:06 IDT 2000" }
+				}
+			}`),
+			wantOut: &Params{
+				Limit:      25,
+				FilterExp:  "created_at > ?",
+				FilterArgs: []interface{}{mustParseTime(time.UnixDate, "Thu May 23 09:30:06 IDT 2000")},
+			},
+		},
+		{
+			name: "time custom layout",
+			conf: Config{
+				Model: new(struct {
+					CreatedAt time.Time `rql:"filter,layout=2006-01-02 15:04"`
+				}),
+			},
+			input: []byte(`{
+				"filter": {
+					"created_at": { "$gt": "2006-01-02 15:04" }
+				}
+			}`),
+			wantOut: &Params{
+				Limit:      25,
+				FilterExp:  "created_at > ?",
+				FilterArgs: []interface{}{mustParseTime("2006-01-02 15:04", "2006-01-02 15:04")},
+			},
+		},
+		{
+			name: "mismatch time unix layout",
+			conf: Config{
+				Model: new(struct {
+					CreatedAt time.Time `rql:"filter,layout=UnixDate"`
+				}),
+			},
+			input: []byte(`{
+				"filter": {
+					"created_at": { "$gt": "2006-01-02 15:04" }
+				}
+			}`),
+			wantErr: true,
 		},
 		{
 			name: "mismatch int type 1",
@@ -872,7 +914,7 @@ func split(e string) []string {
 	return s
 }
 
-func mustParseTime(s string) time.Time {
-	t, _ := time.Parse(time.RFC3339, s)
+func mustParseTime(layout, s string) time.Time {
+	t, _ := time.Parse(layout, s)
 	return t
 }
