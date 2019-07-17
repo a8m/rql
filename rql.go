@@ -123,7 +123,9 @@ func NewParser(c Config) (*Parser, error) {
 		Config: c,
 		fields: make(map[string]*field),
 	}
-	p.init()
+	if err := p.init(); err != nil {
+		return nil, err
+	}
 	return p, nil
 }
 
@@ -196,7 +198,7 @@ func Column(s string) string {
 
 // init initializes the parser parsing state. it scans the fields
 // in a breath-first-search order and for each one of the field calls parseField.
-func (p *Parser) init() {
+func (p *Parser) init() error {
 	t := indirect(reflect.TypeOf(p.Model))
 	l := list.New()
 	for i := 0; i < t.NumField(); i++ {
@@ -209,7 +211,9 @@ func (p *Parser) init() {
 		// no matter what the type of this field. if it has a tag,
 		// it is probably a filterable or sortable.
 		case ok:
-			p.parseField(f)
+			if err := p.parseField(f); err != nil {
+				return err
+			}
 		case t.Kind() == reflect.Struct:
 			for i := 0; i < t.NumField(); i++ {
 				f1 := t.Field(i)
@@ -222,15 +226,43 @@ func (p *Parser) init() {
 			p.Log("ignore embedded field %q that is not struct type", f.Name)
 		}
 	}
+	return nil
 }
 
 // parseField parses the given struct field tag, and add a rule
 // in the parser according to its type and the options that were set on the tag.
-func (p *Parser) parseField(sf reflect.StructField) {
+func (p *Parser) parseField(sf reflect.StructField) error {
 	f := &field{
 		Name:      p.ColumnFn(sf.Name),
 		CovertFn:  valueFn,
 		FilterOps: make(map[string]bool),
+	}
+	layout := time.RFC3339
+	opts := strings.Split(sf.Tag.Get(p.TagName), ",")
+	for _, opt := range opts {
+		switch s := strings.TrimSpace(opt); {
+		case s == "sort":
+			f.Sortable = true
+		case s == "filter":
+			f.Filterable = true
+		case strings.HasPrefix(opt, "column"):
+			f.Name = strings.TrimPrefix(opt, "column=")
+		case strings.HasPrefix(opt, "layout"):
+			layout = strings.TrimPrefix(opt, "layout=")
+			// if it's one of the standard layouts, like: RFC822 or Kitchen.
+			if ly, ok := layouts[layout]; ok {
+				layout = ly
+			}
+			// test the layout on a value (on itself). however, some layouts are invalid
+			// time values for time.Parse, due to formats such as _ for space padding and
+			// Z for zone information.
+			v := strings.NewReplacer("_", " ", "Z", "+").Replace(layout)
+			if _, err := time.Parse(layout, v); err != nil {
+				return fmt.Errorf("rql: layout %q is not parsable: %v", layout, err)
+			}
+		default:
+			p.Log("Ignoring unknown option %q in struct tag", opt)
+		}
 	}
 	filterOps := make([]Op, 0)
 	switch typ := indirect(sf.Type); typ.Kind() {
@@ -239,7 +271,7 @@ func (p *Parser) parseField(sf reflect.StructField) {
 		filterOps = append(filterOps, EQ, NEQ)
 	case reflect.String:
 		f.ValidateFn = validateString
-		filterOps = append(filterOps, EQ, NEQ, LIKE, IN, NIN)
+		filterOps = append(filterOps, EQ, NEQ, LT, LTE, GT, GTE, LIKE, IN, NIN)
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 		f.ValidateFn = validateInt
 		f.CovertFn = convertInt
@@ -267,40 +299,25 @@ func (p *Parser) parseField(sf reflect.StructField) {
 			f.ValidateFn = validateFloat
 			filterOps = append(filterOps, EQ, NEQ, LT, LTE, GT, GTE, IN, NIN)
 		case time.Time:
-			f.ValidateFn = validateTime
-			f.CovertFn = convertTime
+			f.ValidateFn = validateTime(layout)
+			f.CovertFn = convertTime(layout)
 			filterOps = append(filterOps, EQ, NEQ, LT, LTE, GT, GTE, IN, NIN)
 		default:
-			if v.Type().ConvertibleTo(reflect.TypeOf(time.Time{})) {
-				f.ValidateFn = validateTime
-				f.CovertFn = convertTime
-				filterOps = append(filterOps, EQ, NEQ, LT, LTE, GT, GTE, IN, NIN)
-			} else {
-				p.Log("the type for field %q is not supported", sf.Name)
-				return
+			if !v.Type().ConvertibleTo(reflect.TypeOf(time.Time{})) {
+				return fmt.Errorf("rql: field type for %q is not supported", sf.Name)
 			}
+			f.ValidateFn = validateTime(layout)
+			f.CovertFn = convertTime(layout)
+			filterOps = append(filterOps, EQ, NEQ, LT, LTE, GT, GTE, IN, NIN)
 		}
 	default:
-		p.Log("the type for field %q is not supported", sf.Name)
-		return
+		return fmt.Errorf("rql: field type for %q is not supported", sf.Name)
 	}
 	for _, op := range filterOps {
 		f.FilterOps[p.op(op)] = true
 	}
-	opts := strings.Split(sf.Tag.Get(p.TagName), ",")
-	for _, opt := range opts {
-		switch s := strings.TrimSpace(opt); {
-		case s == "sort":
-			f.Sortable = true
-		case s == "filter":
-			f.Filterable = true
-		case strings.HasPrefix(opt, "column"):
-			f.Name = strings.TrimPrefix(opt, "column=")
-		default:
-			p.Log("Ingnoring unknown option %q in struct tag", opt)
-		}
-	}
 	p.fields[f.Name] = f
+	return nil
 }
 
 type parseState struct {
@@ -414,7 +431,7 @@ func (p *parseState) field(f *field, v interface{}) {
 			validatefn = validateSlice(validatefn)
 			convertfn = convertSlice(convertfn)
 		}
-		must(validatefn(opVal), "invalid datatype for field %q", f.Name)
+		must(validatefn(opVal), "invalid datatype or format for field %q", f.Name)
 
 		p.WriteString(p.fmtOp(f.Name, Op(opName[1:])))
 
@@ -528,13 +545,15 @@ func validateUInt(v interface{}) error {
 }
 
 // validate that the underlined element of this interface is a "datetime" string.
-func validateTime(v interface{}) error {
-	s, ok := v.(string)
-	if !ok {
-		return errorType(v, "string")
+func validateTime(layout string) func(interface{}) error {
+	return func(v interface{}) error {
+		s, ok := v.(string)
+		if !ok {
+			return errorType(v, "string")
+		}
+		_, err := time.Parse(layout, s)
+		return err
 	}
-	_, err := time.Parse(time.RFC3339, s)
-	return err
 }
 
 type ValidateFn func(v interface{}) error
@@ -577,12 +596,33 @@ func convertInt(v interface{}) interface{} {
 }
 
 // convert string to time object.
-func convertTime(v interface{}) interface{} {
-	t, _ := time.Parse(time.RFC3339, v.(string))
-	return t
+func convertTime(layout string) func(interface{}) interface{} {
+	return func(v interface{}) interface{} {
+		t, _ := time.Parse(layout, v.(string))
+		return t
+	}
 }
 
 // nop converter.
 func valueFn(v interface{}) interface{} {
 	return v
+}
+
+// layouts holds all standard time.Time layouts.
+var layouts = map[string]string{
+	"ANSIC":       time.ANSIC,
+	"UnixDate":    time.UnixDate,
+	"RubyDate":    time.RubyDate,
+	"RFC822":      time.RFC822,
+	"RFC822Z":     time.RFC822Z,
+	"RFC850":      time.RFC850,
+	"RFC1123":     time.RFC1123,
+	"RFC1123Z":    time.RFC1123Z,
+	"RFC3339":     time.RFC3339,
+	"RFC3339Nano": time.RFC3339Nano,
+	"Kitchen":     time.Kitchen,
+	"Stamp":       time.Stamp,
+	"StampMilli":  time.StampMilli,
+	"StampMicro":  time.StampMicro,
+	"StampNano":   time.StampNano,
 }

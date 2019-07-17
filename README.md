@@ -131,7 +131,15 @@ Let's go over the validation rules:
 3. `float` (32,64), sql.NullFloat64: - Number
 4. `bool`, `sql.NullBool` - Boolean
 5. `string`, `sql.NullString` - String
-6. `time.Time`, and other types that convertible to `time.Time` - time.RFC3339 format (JS format), and parsable to `time.Time`.
+6. `time.Time`, and other types that convertible to `time.Time` - The default layout is time.RFC3339 format (JS format), and parsable to `time.Time`.
+   It's possible to override the `time.Time` layout format with custom one. You can either use one of the standard layouts in the `time` package, or use a custom one. For example:
+   ```go
+   type User struct {
+		T1 time.Time `rql:"filter"`                         // time.RFC3339
+		T2 time.Time `rql:"filter,layout=UnixDate"`         // time.UnixDate
+		T3 time.Time `rql:"filter,layout=2006-01-02 15:04"` // 2006-01-02 15:04 (custom)
+   }
+   ```  
 
 Note that all rules are applied to pointers as well. It means, if you have a field `Name *string` in your struct, we still use the string validation rule for it.
 
@@ -196,7 +204,7 @@ To simplify that, the rule is `AND` for objects and `OR` for arrays. Let's go ov
 
 ##### Predicates
 - `$eq` and `$neq` - can be used on all types
-- `$gt`, `$lt`, `$gte` and `$lte` - can be used only on numbers, and timestamp
+- `$gt`, `$lt`, `$gte` and `$lte` - can be used on numbers, strings, and timestamp
 - `$like` - can be used only on type string
 
 If a user tries to apply an unsupported predicate on a field it will get an informative error. For example:
@@ -307,7 +315,6 @@ fmt.Println(params.FilterArgs)	// [true, Time(2018-01-01T16:00:00.000Z), Time(20
 
 ## Future Plans and Contributions
 If you want to help with the development of this package, here is a list of options things I want to add
-- [ ] Support vgo
 - [ ] JS library for query building
 - [ ] Option to ignore validation with specific tag
 - [ ] Add `$not` and `$nor` operators
