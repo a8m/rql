@@ -154,6 +154,12 @@ func (p *Parser) Parse(b []byte) (pr *Params, err error) {
 	}()
 	q := new(Query)
 	must(q.UnmarshalJSON(b), "decoding buffer to Query")
+	return p.ParseQuery(*q)
+}
+
+// Parse Query parses the given struct into a Param object. It returns an error
+// if the filter JSON is invalid, or its values don't follow the schema of rql.
+func (p *Parser) ParseQuery(q Query) (pr *Params, err error) {
 	pr = &Params{
 		Limit: p.DefaultLimit,
 	}
