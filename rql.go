@@ -239,18 +239,18 @@ func (p *Parser) parseField(sf reflect.StructField) {
 		filterOps = append(filterOps, EQ, NEQ)
 	case reflect.String:
 		f.ValidateFn = validateString
-		filterOps = append(filterOps, EQ, NEQ, LIKE)
+		filterOps = append(filterOps, EQ, NEQ, LIKE, IN, NIN)
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 		f.ValidateFn = validateInt
 		f.CovertFn = convertInt
-		filterOps = append(filterOps, EQ, NEQ, LT, LTE, GT, GTE)
+		filterOps = append(filterOps, EQ, NEQ, LT, LTE, GT, GTE, IN, NIN)
 	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
 		f.ValidateFn = validateUInt
 		f.CovertFn = convertInt
-		filterOps = append(filterOps, EQ, NEQ, LT, LTE, GT, GTE)
+		filterOps = append(filterOps, EQ, NEQ, LT, LTE, GT, GTE, IN, NIN)
 	case reflect.Float32, reflect.Float64:
 		f.ValidateFn = validateFloat
-		filterOps = append(filterOps, EQ, NEQ, LT, LTE, GT, GTE)
+		filterOps = append(filterOps, EQ, NEQ, LT, LTE, GT, GTE, IN, NIN)
 	case reflect.Struct:
 		switch v := reflect.Zero(typ); v.Interface().(type) {
 		case sql.NullBool:
@@ -258,23 +258,23 @@ func (p *Parser) parseField(sf reflect.StructField) {
 			filterOps = append(filterOps, EQ, NEQ)
 		case sql.NullString:
 			f.ValidateFn = validateString
-			filterOps = append(filterOps, EQ, NEQ)
+			filterOps = append(filterOps, EQ, NEQ, IN, NIN)
 		case sql.NullInt64:
 			f.ValidateFn = validateInt
 			f.CovertFn = convertInt
-			filterOps = append(filterOps, EQ, NEQ, LT, LTE, GT, GTE)
+			filterOps = append(filterOps, EQ, NEQ, LT, LTE, GT, GTE, IN, NIN)
 		case sql.NullFloat64:
 			f.ValidateFn = validateFloat
-			filterOps = append(filterOps, EQ, NEQ, LT, LTE, GT, GTE)
+			filterOps = append(filterOps, EQ, NEQ, LT, LTE, GT, GTE, IN, NIN)
 		case time.Time:
 			f.ValidateFn = validateTime
 			f.CovertFn = convertTime
-			filterOps = append(filterOps, EQ, NEQ, LT, LTE, GT, GTE)
+			filterOps = append(filterOps, EQ, NEQ, LT, LTE, GT, GTE, IN, NIN)
 		default:
 			if v.Type().ConvertibleTo(reflect.TypeOf(time.Time{})) {
 				f.ValidateFn = validateTime
 				f.CovertFn = convertTime
-				filterOps = append(filterOps, EQ, NEQ, LT, LTE, GT, GTE)
+				filterOps = append(filterOps, EQ, NEQ, LT, LTE, GT, GTE, IN, NIN)
 			} else {
 				p.Log("the type for field %q is not supported", sf.Name)
 				return
@@ -526,6 +526,23 @@ func validateTime(v interface{}) error {
 	}
 	_, err := time.Parse(time.RFC3339, s)
 	return err
+}
+
+type ValidateFn func(v interface{}) error
+
+func validateSlice(fn ValidateFn) ValidateFn {
+	return func(v interface{}) error {
+		vs, ok := v.([]interface{})
+		if !ok {
+			return errorType(v, "slice")
+		}
+		for _, v := range vs {
+			if err := fn(v); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
 }
 
 // convert float to int.
