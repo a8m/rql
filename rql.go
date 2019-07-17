@@ -407,9 +407,18 @@ func (p *parseState) field(f *field, v interface{}) {
 			p.WriteString(" AND ")
 		}
 		expect(f.FilterOps[opName], "can not apply op %q on field %q", opName, f.Name)
-		must(f.ValidateFn(opVal), "invalid datatype for field %q", f.Name)
+
+		convertfn := f.CovertFn
+		validatefn := f.ValidateFn
+		if opName == p.op(NIN) || opName == p.op(IN) {
+			validatefn = validateSlice(validatefn)
+			convertfn = convertSlice(convertfn)
+		}
+		must(validatefn(opVal), "invalid datatype for field %q", f.Name)
+
 		p.WriteString(p.fmtOp(f.Name, Op(opName[1:])))
-		p.values = append(p.values, f.CovertFn(opVal))
+
+		p.values = append(p.values, convertfn(opVal))
 		i++
 	}
 	if len(terms) > 1 {
@@ -536,12 +545,29 @@ func validateSlice(fn ValidateFn) ValidateFn {
 		if !ok {
 			return errorType(v, "slice")
 		}
+
 		for _, v := range vs {
 			if err := fn(v); err != nil {
 				return err
 			}
 		}
+
 		return nil
+	}
+}
+
+type ConvertFn func(v interface{}) interface{}
+
+func convertSlice(fn ConvertFn) ConvertFn {
+	return func(v interface{}) interface{} {
+		vs, _ := v.([]interface{})
+
+		out := make([]interface{}, 0, len(vs))
+		for _, v := range vs {
+			out = append(out, fn(v))
+		}
+
+		return out
 	}
 }
 

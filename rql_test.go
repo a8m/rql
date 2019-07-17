@@ -377,6 +377,27 @@ func TestParse(t *testing.T) {
 			},
 		},
 		{
+			name: "IN and NIN support",
+			conf: Config{
+				Model: new(struct {
+					Age  int    `rql:"filter"`
+					Name string `rql:"filter"`
+				}),
+				DefaultLimit: 25,
+			},
+			input: []byte(`{
+				"filter": {
+					"age": { "$in": [1,2,3] },
+					"name": { "$nin": ["bilbo", "bob"] }
+				}
+			}`),
+			wantOut: &Params{
+				Limit:      25,
+				FilterExp:  "age IN ? AND name NOT IN ?",
+				FilterArgs: []interface{}{[]int{1, 2, 3}, []string{"bilbo", "bob"}},
+			},
+		},
+		{
 			name: "valid operations",
 			conf: Config{
 				Model: new(struct {
