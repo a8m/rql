@@ -168,6 +168,9 @@ func (p *Parser) Parse(b []byte) (pr *Params, err error) {
 	pr.FilterExp = ps.String()
 	pr.FilterArgs = ps.values
 	pr.Sort = p.sort(q.Sort)
+	if len(pr.Sort) == 0 && len(p.DefaultSort) > 0 {
+		pr.Sort = p.sort(p.DefaultSort)
+	}
 	parseStatePool.Put(ps)
 	return
 }

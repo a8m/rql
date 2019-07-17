@@ -486,6 +486,64 @@ func TestParse(t *testing.T) {
 			},
 		},
 		{
+			name: "sort with default sort field configured, and no sort in query",
+			conf: Config{
+				Model: struct {
+					Age     int    `rql:"filter,sort"`
+					Name    string `rql:"filter,sort"`
+					Address struct {
+						Name string `rql:"filter,sort"`
+						ZIP  *struct {
+							Code int `rql:"filter,sort"`
+						}
+					}
+				}{},
+				DefaultLimit: 25,
+				DefaultSort:  []string{"-name"},
+			},
+			input: []byte(`{
+				"filter": {
+					"address_zip_code": 100
+				},
+				"sort": []
+			}`),
+			wantOut: &Params{
+				Limit:      25,
+				FilterExp:  "address_zip_code = ?",
+				FilterArgs: []interface{}{100},
+				Sort:       "name desc",
+			},
+		},
+		{
+			name: "sort with default sort field configured, and sort specified in query",
+			conf: Config{
+				Model: struct {
+					Age     int    `rql:"filter,sort"`
+					Name    string `rql:"filter,sort"`
+					Address struct {
+						Name string `rql:"filter,sort"`
+						ZIP  *struct {
+							Code int `rql:"filter,sort"`
+						}
+					}
+				}{},
+				DefaultLimit: 25,
+				DefaultSort:  []string{"-name"},
+			},
+			input: []byte(`{
+				"filter": {
+					"address_zip_code": 100
+				},
+				"sort": ["-age"]
+			}`),
+			wantOut: &Params{
+				Limit:      25,
+				FilterExp:  "address_zip_code = ?",
+				FilterArgs: []interface{}{100},
+				Sort:       "age desc",
+			},
+		},
+		{
 			name: "custom column name",
 			conf: Config{
 				Model: struct {

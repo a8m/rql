@@ -133,6 +133,9 @@ type Config struct {
 	// LimitMaxValue is the upper boundary for the limit field. User will get an error if the given value is greater
 	// than this value. It defaults to 100.
 	LimitMaxValue int
+	// DefaultSort is the default value for the 'Sort' field that returns when no sort expression is supplied by the caller.
+	// It defaults to an empty string slice.
+	DefaultSort []string
 }
 
 // defaults sets the default configuration of Config.
