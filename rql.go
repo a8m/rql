@@ -154,7 +154,7 @@ func (p *Parser) Parse(b []byte) (pr *Params, err error) {
 	}()
 	q := new(Query)
 	if err := q.UnmarshalJSON(b); err != nil {
-	    return nil, &ParseError{"decoding buffer to *Query: "+ err.Error())
+		return nil, &ParseError{"decoding buffer to *Query: " + err.Error()}
 	}
 	return p.ParseQuery(*q)
 }
