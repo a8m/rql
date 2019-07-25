@@ -142,16 +142,6 @@ func MustNewParser(c Config) *Parser {
 // Parse parses the given buffer into a Param object. It returns an error
 // if the JSON is invalid, or its values don't follow the schema of rql.
 func (p *Parser) Parse(b []byte) (pr *Params, err error) {
-	defer func() {
-		if e := recover(); e != nil {
-			perr, ok := e.(ParseError)
-			if !ok {
-				panic(e)
-			}
-			err = perr
-			pr = nil
-		}
-	}()
 	q := new(Query)
 	if err := q.UnmarshalJSON(b); err != nil {
 		return nil, &ParseError{"decoding buffer to *Query: " + err.Error()}
