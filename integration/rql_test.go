@@ -37,6 +37,9 @@ func TestMySQL(t *testing.T) {
 	defer Teardown(t, db)
 	AssertCount(t, db, 1, `{ "filter": { "id": 1 } }`)
 	AssertCount(t, db, 1, `{ "filter": { "id": 100 } }`)
+	AssertCount(t, db, 3, `{ "filter": { "id": { "$in": [1,3,5] } } }`)
+	AssertCount(t, db, 6, `{ "filter": { "id": { "$nin": [1,3,5,7], "$lte": 10 } } }`)
+	AssertCount(t, db, 2, `{ "filter": {"name": {"$in":["user_1","user_2"]} } }`)
 	AssertCount(t, db, 50, `{ "filter": { "id": { "$gt": 50 } } }`)
 	AssertCount(t, db, 50, `{ "filter": { "id": { "$lte": 50 } } }`)
 	AssertCount(t, db, 99, `{ "filter": { "$or": [{ "id":{ "$gt": 50 } }, { "id":{ "$lt": 50 } }] } }`)
@@ -55,6 +58,8 @@ func TestMySQL(t *testing.T) {
 	AssertMatchIDs(t, db, []int{1}, `{ "filter": { "id": 1 } }`)
 	AssertMatchIDs(t, db, []int{2, 3}, `{ "filter": { "$or": [ { "id": 2 }, { "id": 3 } ] } }`)
 	AssertMatchIDs(t, db, []int{3, 2}, `{ "filter": { "$or": [ { "id": 2 }, { "id": 3 } ] }, "sort": ["-id"] }`)
+	AssertMatchIDs(t, db, []int{1, 3, 5}, `{ "filter": { "id": { "$in": [1,3,5] } } }`)
+	AssertMatchIDs(t, db, []int{2, 4, 6, 8, 9, 10}, `{ "filter": { "id": { "$nin": [1,3,5,7], "$lte": 10 } } }`)
 	AssertMatchIDs(t, db, []int{5, 4, 3, 2, 1}, `{ "filter": { "id": { "$lte": 5 } }, "sort": ["-id"] }`)
 }
 
