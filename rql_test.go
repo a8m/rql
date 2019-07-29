@@ -2,10 +2,13 @@ package rql
 
 import (
 	"database/sql"
+	"log"
 	"reflect"
 	"strings"
 	"testing"
 	"time"
+
+	"gopkg.in/mgo.v2/bson"
 )
 
 func TestInit(t *testing.T) {
@@ -890,6 +893,57 @@ func TestParse(t *testing.T) {
 	}
 }
 
+func TestParseMgo(t *testing.T) {
+	tests := []struct {
+		name    string
+		conf    Config
+		input   []byte
+		wantErr bool
+		wantOut *MgoParams
+	}{
+		{
+			//BUG: need to perform type converison, want int but got float64.
+			name: "simple test",
+			conf: Config{
+				Model: new(struct {
+					Age  int    `rql:"filter"`
+					Name string `rql:"filter"`
+				}),
+				DefaultLimit: 25,
+			},
+			input: []byte(`{
+				"filter": {
+					"name": "foo",
+					"age": 12
+				}
+			}`),
+			wantOut: &MgoParams{
+				Limit: 25,
+				Find: bson.M{
+					"name": "foo",
+					"age":  12,
+				},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			p, err := NewParser(tt.conf)
+			if err != nil {
+				t.Fatalf("failed to build parser: %v", err)
+			}
+
+			_, err = p.ParseMgo(tt.input)
+			if tt.wantErr != (err != nil) {
+				t.Fatalf("want: %v\ngot:%v\nerr: %v", tt.wantErr, err != nil, err)
+			}
+
+			// assertMgoParams(t, out, tt.wantOut)
+		})
+	}
+}
+
 // AssertQueryEqual tests if two query input are equal.
 // TODO: improve this in the future.
 func assertParams(t *testing.T, got *Params, want *Params) {
@@ -911,6 +965,41 @@ func assertParams(t *testing.T, got *Params, want *Params) {
 	if !equalArgs(got.FilterArgs, got.FilterArgs) || !equalArgs(want.FilterArgs, got.FilterArgs) {
 		t.Fatalf("filter args:\n\tgot: %v\n\twant %v", got.FilterArgs, want.FilterArgs)
 	}
+}
+
+// assertMgoParasm tests if two query input are equal for Mongodb query output.
+// TODO: need to add Select & Find.
+func assertMgoParams(t *testing.T, got *MgoParams, want *MgoParams) {
+	if got == nil && want == nil {
+		return
+	}
+
+	if got.Limit != want.Limit {
+		t.Fatalf("limit: got: %v want %v", got.Limit, want.Limit)
+	}
+
+	if got.Skip != want.Skip {
+		t.Fatalf("skip: got: %v want %v", got.Limit, want.Limit)
+	}
+
+	if got.Sort != want.Sort {
+		t.Fatalf("sort: got: %q want %q", got.Sort, want.Sort)
+	}
+
+	for wantKey, wantVal := range want.Select {
+		if gotVal, ok := got.Select[wantKey]; !ok || gotVal != wantVal {
+			t.Fatalf("select: got: %v want %v", gotVal, wantVal)
+		}
+	}
+
+	for wantKey, wantVal := range want.Find {
+		if gotVal, ok := got.Find[wantKey]; !ok || gotVal != wantVal {
+			log.Print(reflect.ValueOf(gotVal).Type())
+			log.Print(reflect.ValueOf(wantVal).Type())
+			t.Fatalf("find: got: %v want %v", gotVal, wantVal)
+		}
+	}
+
 }
 
 func equalArgs(a, b []interface{}) bool {

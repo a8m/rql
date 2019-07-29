@@ -12,12 +12,15 @@ import (
 	"sync"
 	"time"
 	"unicode"
+
+	"gopkg.in/mgo.v2/bson"
 )
 
 //go:generate easyjson -omit_empty -disallow_unknown_fields -snake_case rql.go
 
 // Query is the decoded result of the user input.
 //easyjson:json
+// TODO: Need to add Selector for Mongodb operations.
 type Query struct {
 	// Limit must be greater than 0 and less than or equal to `LimitMaxValue`.
 	Limit int `json:"limit,omitempty"`
@@ -80,6 +83,25 @@ type Params struct {
 	// 	   Args: "a8m", 22
 	FilterExp  string
 	FilterArgs []interface{}
+}
+
+// MgoParams contains details for mongodb query operations.
+type MgoParams struct {
+	//Limit represents the number of documents to be retruned.
+	Limit int
+
+	//Skip represents the number of documents to be skiped.
+	Skip int
+
+	// Sort the documents.
+	// example: "name,-age".
+	Sort string
+
+	//Select the required keys and values for the document.
+	Select bson.M
+
+	//Find the documents based on the query.
+	Find bson.M
 }
 
 // ParseError is type of error returned when there is a parsing problem.
@@ -152,17 +174,20 @@ func (p *Parser) Parse(b []byte) (pr *Params, err error) {
 			pr = nil
 		}
 	}()
+
 	q := new(Query)
 	must(q.UnmarshalJSON(b), "decoding buffer to Query")
 	pr = &Params{
 		Limit: p.DefaultLimit,
 	}
+
 	expect(q.Offset >= 0, "offset must be greater than or equal to 0")
 	pr.Offset = q.Offset
 	if q.Limit != 0 {
 		expect(q.Limit > 0 && q.Limit <= p.LimitMaxValue, "limit must be greater than 0 and less than or equal to %d", p.Model)
 		pr.Limit = q.Limit
 	}
+
 	ps := p.newParseState()
 	ps.and(q.Filter)
 	pr.FilterExp = ps.String()
@@ -172,6 +197,42 @@ func (p *Parser) Parse(b []byte) (pr *Params, err error) {
 		pr.Sort = p.sort(p.DefaultSort)
 	}
 	parseStatePool.Put(ps)
+	return
+}
+
+// ParseMgo parses the given buffer into a Param object. It returns an error
+// if the JSON is invalid, or its values don't follow the schema of rql.
+func (p *Parser) ParseMgo(b []byte) (pr *MgoParams, err error) {
+	defer func() {
+		if e := recover(); e != nil {
+			perr, ok := e.(ParseError)
+			if !ok {
+				panic(e)
+			}
+			err = perr
+			pr = nil
+		}
+	}()
+
+	q := new(Query)
+	must(q.UnmarshalJSON(b), "decoding buffer to Query")
+	pr = &MgoParams{
+		Limit: p.DefaultLimit,
+	}
+
+	expect(q.Offset >= 0, "offset must be greater than or equal to 0")
+	pr.Skip = q.Offset
+	if q.Limit != 0 {
+		expect(q.Limit > 0 && q.Limit <= p.LimitMaxValue, "limit must be greater than 0 and less than or equal to %d", p.Model)
+		pr.Limit = q.Limit
+	}
+
+	if q.Filter != nil {
+		expect(len(q.Filter) > 0, "filter shouldn't be empty")
+	}
+
+	// TODO: Need to perform type converstion.
+	pr.Find = q.Filter
 	return
 }
 
