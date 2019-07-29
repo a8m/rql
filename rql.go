@@ -412,7 +412,7 @@ func (p *parseState) field(f *field, v interface{}) {
 	// default equality check.
 	if !ok {
 		must(f.ValidateFn(v), "invalid datatype for field %q", f.Name)
-		p.WriteString(p.fmtOp(f.Name, EQ))
+		p.WriteString(p.fmtOp(f.Name, EQ, 1))
 		p.values = append(p.values, f.CovertFn(v))
 	}
 	var i int
@@ -425,17 +425,23 @@ func (p *parseState) field(f *field, v interface{}) {
 		}
 		expect(f.FilterOps[opName], "can not apply op %q on field %q", opName, f.Name)
 
-		convertfn := f.CovertFn
-		validatefn := f.ValidateFn
+		validateFn := f.ValidateFn
 		if opName == p.op(NIN) || opName == p.op(IN) {
-			validatefn = validateSlice(validatefn)
-			convertfn = convertSlice(convertfn)
+			validateFn = validateSlice(validateFn)
 		}
-		must(validatefn(opVal), "invalid datatype or format for field %q", f.Name)
+		must(validateFn(opVal), "invalid datatype or format for field %q", f.Name)
 
-		p.WriteString(p.fmtOp(f.Name, Op(opName[1:])))
+		if opName == p.op(NIN) || opName == p.op(IN) {
+			sliceRaw := convertSlice(f.CovertFn)(opVal)
+			slice, _ := sliceRaw.([]interface{})
+			p.WriteString(p.fmtOp(f.Name, Op(opName[1:]), len(slice)))
+			p.values = append(p.values, slice...)
+		} else {
 
-		p.values = append(p.values, convertfn(opVal))
+			p.WriteString(p.fmtOp(f.Name, Op(opName[1:]), 1))
+			p.values = append(p.values, f.CovertFn(opVal))
+		}
+
 		i++
 	}
 	if len(terms) > 1 {
@@ -445,9 +451,13 @@ func (p *parseState) field(f *field, v interface{}) {
 
 // fmtOp create a string for the operation with a placeholder.
 // for example: "name = ?", or "age >= ?".
-func (p *Parser) fmtOp(field string, op Op) string {
+func (p *Parser) fmtOp(field string, op Op, placeHolderCount int) string {
 	colName := p.colName(field)
-	return colName + " " + op.SQL() + " ?"
+	placeHolder := "?"
+	if placeHolderCount > 1 {
+		placeHolder = "(" + strings.Trim(strings.Repeat("?,", placeHolderCount), ",") + ")"
+	}
+	return colName + " " + op.SQL() + " " + placeHolder
 }
 
 // colName formats the query field to database column name in cases the user configured a custom
