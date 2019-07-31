@@ -93,8 +93,10 @@ func (p ParseError) Error() string {
 
 // field is a configuration of a struct field.
 type field struct {
-	// Name of the column.
+	// Name of the field.
 	Name string
+	// Name of the column.
+	ColumnName string
 	// Has a "sort" option in the tag.
 	Sortable bool
 	// Has a "filter" option in the tag.
@@ -233,9 +235,9 @@ func (p *Parser) init() error {
 // in the parser according to its type and the options that were set on the tag.
 func (p *Parser) parseField(sf reflect.StructField) error {
 	f := &field{
-		Name:      p.ColumnFn(sf.Name),
-		CovertFn:  valueFn,
-		FilterOps: make(map[string]bool),
+		ColumnName: p.ColumnFn(sf.Name),
+		CovertFn:   valueFn,
+		FilterOps:  make(map[string]bool),
 	}
 	layout := time.RFC3339
 	opts := strings.Split(sf.Tag.Get(p.TagName), ",")
@@ -245,9 +247,11 @@ func (p *Parser) parseField(sf reflect.StructField) error {
 			f.Sortable = true
 		case s == "filter":
 			f.Filterable = true
-		case strings.HasPrefix(opt, "column"):
-			f.Name = strings.TrimPrefix(opt, "column=")
-		case strings.HasPrefix(opt, "layout"):
+		case strings.HasPrefix(opt, "name="):
+			f.Name = strings.TrimPrefix(opt, "name=")
+		case strings.HasPrefix(opt, "column="):
+			f.ColumnName = strings.TrimPrefix(opt, "column=")
+		case strings.HasPrefix(opt, "layout="):
 			layout = strings.TrimPrefix(opt, "layout=")
 			// if it's one of the standard layouts, like: RFC822 or Kitchen.
 			if ly, ok := layouts[layout]; ok {
@@ -263,6 +267,13 @@ func (p *Parser) parseField(sf reflect.StructField) error {
 		default:
 			p.Log("Ignoring unknown option %q in struct tag", opt)
 		}
+	}
+
+	if len(f.Name) == 0 && p.FieldNameFn != nil {
+		f.Name = p.FieldNameFn(sf.Name)
+	}
+	if len(f.Name) == 0 {
+		f.Name = f.ColumnName // backwards compatibility
 	}
 	filterOps := make([]Op, 0)
 	switch typ := indirect(sf.Type); typ.Kind() {
@@ -356,9 +367,10 @@ func (p *Parser) sort(fields []string) string {
 			orderBy = order
 			field = field[1:]
 		}
-		expect(p.fields[field] != nil, "unrecognized key %q for sorting", field)
-		expect(p.fields[field].Sortable, "field %q is not sortable", field)
-		colName := p.colName(field)
+		fieldSpec := p.fields[field]
+		expect(fieldSpec != nil, "unrecognized key %q for sorting", field)
+		expect(fieldSpec.Sortable, "field %q is not sortable", field)
+		colName := p.colName(field) // TODO: what about fieldspec.ColumnName?
 		if orderBy != "" {
 			colName += " " + orderBy
 		}
@@ -412,7 +424,7 @@ func (p *parseState) field(f *field, v interface{}) {
 	// default equality check.
 	if !ok {
 		must(f.ValidateFn(v), "invalid datatype for field %q", f.Name)
-		p.WriteString(p.fmtOp(f.Name, EQ))
+		p.WriteString(p.fmtOp(f.ColumnName, EQ))
 		p.values = append(p.values, f.CovertFn(v))
 	}
 	var i int
@@ -425,7 +437,7 @@ func (p *parseState) field(f *field, v interface{}) {
 		}
 		expect(f.FilterOps[opName], "can not apply op %q on field %q", opName, f.Name)
 		must(f.ValidateFn(opVal), "invalid datatype or format for field %q", f.Name)
-		p.WriteString(p.fmtOp(f.Name, Op(opName[1:])))
+		p.WriteString(p.fmtOp(f.ColumnName, Op(opName[1:])))
 		p.values = append(p.values, f.CovertFn(opVal))
 		i++
 	}

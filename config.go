@@ -110,6 +110,10 @@ type Config struct {
 	// 	}
 	//
 	FieldSep string
+	// FieldNameFn is the function used to generate the external query field name.
+	// Example TODO
+	// Example Compare to ColumnFN
+	FieldNameFn func(string) string
 	// ColumnFn is the function that translate the struct field string into a table column.
 	// For example, given the following fields and their column names:
 	//
