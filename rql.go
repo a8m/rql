@@ -142,6 +142,16 @@ func MustNewParser(c Config) *Parser {
 // Parse parses the given buffer into a Param object. It returns an error
 // if the JSON is invalid, or its values don't follow the schema of rql.
 func (p *Parser) Parse(b []byte) (pr *Params, err error) {
+	q := new(Query)
+	if err := q.UnmarshalJSON(b); err != nil {
+		return nil, &ParseError{"decoding buffer to *Query: " + err.Error()}
+	}
+	return p.ParseQuery(*q)
+}
+
+// ParseQuery parses the given struct into a Param object. It returns an error
+// if one of the query values don't follow the schema of rql.
+func (p *Parser) ParseQuery(q Query) (pr *Params, err error) {
 	defer func() {
 		if e := recover(); e != nil {
 			perr, ok := e.(ParseError)
@@ -152,8 +162,6 @@ func (p *Parser) Parse(b []byte) (pr *Params, err error) {
 			pr = nil
 		}
 	}()
-	q := new(Query)
-	must(q.UnmarshalJSON(b), "decoding buffer to Query")
 	pr = &Params{
 		Limit: p.DefaultLimit,
 	}
