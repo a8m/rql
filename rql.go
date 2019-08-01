@@ -142,19 +142,19 @@ func MustNewParser(c Config) *Parser {
 // Parse parses the given buffer into a Param object. It returns an error
 // if the JSON is invalid, or its values don't follow the schema of rql.
 func (p *Parser) Parse(b []byte) (pr *Params, err error) {
-	q := new(Query)
+	q := &Query{}
 	if err := q.UnmarshalJSON(b); err != nil {
 		return nil, &ParseError{"decoding buffer to *Query: " + err.Error()}
 	}
-	return p.ParseQuery(*q)
+	return p.ParseQuery(q)
 }
 
 // ParseQuery parses the given struct into a Param object. It returns an error
 // if one of the query values don't follow the schema of rql.
-func (p *Parser) ParseQuery(q Query) (pr *Params, err error) {
+func (p *Parser) ParseQuery(q *Query) (pr *Params, err error) {
 	defer func() {
 		if e := recover(); e != nil {
-			perr, ok := e.(ParseError)
+			perr, ok := e.(*ParseError)
 			if !ok {
 				panic(e)
 			}
@@ -469,7 +469,7 @@ func (p *Parser) op(op Op) string {
 // expect panic if the condition is false.
 func expect(cond bool, msg string, args ...interface{}) {
 	if !cond {
-		panic(ParseError{fmt.Sprintf(msg, args...)})
+		panic(&ParseError{fmt.Sprintf(msg, args...)})
 	}
 }
 
@@ -477,7 +477,7 @@ func expect(cond bool, msg string, args ...interface{}) {
 func must(err error, msg string, args ...interface{}) {
 	if err != nil {
 		args = append(args, err)
-		panic(ParseError{fmt.Sprintf(msg+": %s", args...)})
+		panic(&ParseError{fmt.Sprintf(msg+": %s", args...)})
 	}
 }
 
