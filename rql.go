@@ -144,9 +144,19 @@ func MustNewParser(c Config) *Parser {
 // Parse parses the given buffer into a Param object. It returns an error
 // if the JSON is invalid, or its values don't follow the schema of rql.
 func (p *Parser) Parse(b []byte) (pr *Params, err error) {
+	q := &Query{}
+	if err := q.UnmarshalJSON(b); err != nil {
+		return nil, &ParseError{"decoding buffer to *Query: " + err.Error()}
+	}
+	return p.ParseQuery(q)
+}
+
+// ParseQuery parses the given struct into a Param object. It returns an error
+// if one of the query values don't follow the schema of rql.
+func (p *Parser) ParseQuery(q *Query) (pr *Params, err error) {
 	defer func() {
 		if e := recover(); e != nil {
-			perr, ok := e.(ParseError)
+			perr, ok := e.(*ParseError)
 			if !ok {
 				panic(e)
 			}
@@ -154,8 +164,6 @@ func (p *Parser) Parse(b []byte) (pr *Params, err error) {
 			pr = nil
 		}
 	}()
-	q := new(Query)
-	must(q.UnmarshalJSON(b), "decoding buffer to Query")
 	pr = &Params{
 		Limit: p.DefaultLimit,
 	}
@@ -170,6 +178,9 @@ func (p *Parser) Parse(b []byte) (pr *Params, err error) {
 	pr.FilterExp = ps.String()
 	pr.FilterArgs = ps.values
 	pr.Sort = p.sort(q.Sort)
+	if len(pr.Sort) == 0 && len(p.DefaultSort) > 0 {
+		pr.Sort = p.sort(p.DefaultSort)
+	}
 	parseStatePool.Put(ps)
 	return
 }
@@ -275,6 +286,7 @@ func (p *Parser) parseField(sf reflect.StructField) error {
 	if len(f.Name) == 0 {
 		f.Name = f.ColumnName // backwards compatibility
 	}
+  
 	filterOps := make([]Op, 0)
 	switch typ := indirect(sf.Type); typ.Kind() {
 	case reflect.Bool:
@@ -470,7 +482,7 @@ func (p *Parser) op(op Op) string {
 // expect panic if the condition is false.
 func expect(cond bool, msg string, args ...interface{}) {
 	if !cond {
-		panic(ParseError{fmt.Sprintf(msg, args...)})
+		panic(&ParseError{fmt.Sprintf(msg, args...)})
 	}
 }
 
@@ -478,7 +490,7 @@ func expect(cond bool, msg string, args ...interface{}) {
 func must(err error, msg string, args ...interface{}) {
 	if err != nil {
 		args = append(args, err)
-		panic(ParseError{fmt.Sprintf(msg+": %s", args...)})
+		panic(&ParseError{fmt.Sprintf(msg+": %s", args...)})
 	}
 }
 
