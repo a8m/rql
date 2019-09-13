@@ -56,13 +56,17 @@ func TestMySQL(t *testing.T) {
 	AssertMatchIDs(t, db, []int{2, 3}, `{ "filter": { "$or": [ { "id": 2 }, { "id": 3 } ] } }`)
 	AssertMatchIDs(t, db, []int{3, 2}, `{ "filter": { "$or": [ { "id": 2 }, { "id": 3 } ] }, "sort": ["-id"] }`)
 	AssertMatchIDs(t, db, []int{5, 4, 3, 2, 1}, `{ "filter": { "id": { "$lte": 5 } }, "sort": ["-id"] }`)
+	AssertSelect(t, db, []string{"user_1", "user_2"}, `{ "select": ["name"], "limit": 2 }`)
+	AssertSelect(t, db, []string{"address_1", "address_2"}, `{ "select": ["address_name"], "limit": 2 }`)
 }
 
 func AssertCount(t *testing.T, db *gorm.DB, expected int, query string) {
 	params, err := QueryParser.Parse([]byte(query))
 	must(t, err, "parse query: %s", query)
 	count := 0
-	err = db.Model(User{}).Where(params.FilterExp, params.FilterArgs...).Count(&count).Error
+	err = db.Model(User{}).
+		Where(params.FilterExp, params.FilterArgs...).
+		Count(&count).Error
 	must(t, err, "count users")
 	if count != expected {
 		t.Errorf("AssertCount: %s\n\twant: %d\n\tgot: %d", query, expected, count)
@@ -73,15 +77,39 @@ func AssertMatchIDs(t *testing.T, db *gorm.DB, expected []int, query string) {
 	params, err := QueryParser.Parse([]byte(query))
 	must(t, err, "parse query: %s", query)
 	var ids []int
-	err = db.Model(User{}).Where(params.FilterExp, params.FilterArgs...).Order(params.Sort).Pluck("id", &ids).Error
+	err = db.Model(User{}).
+		Where(params.FilterExp, params.FilterArgs...).
+		Order(params.Sort).
+		Pluck("id", &ids).Error
 	must(t, err, "select ids")
 	if len(ids) != len(expected) {
-		t.Errorf("AssertMatchIDs:\n\twant: %d\n\tgot: %d", expected, ids)
+		t.Errorf("AssertMatchIDs:\n\twant: %v\n\tgot: %v", expected, ids)
 		return
 	}
 	for i := range expected {
 		if ids[i] != expected[i] {
-			t.Errorf("AssertMatchIDs:\n\twant: %d\n\tgot: %d", expected, ids)
+			t.Errorf("AssertMatchIDs:\n\twant: %v\n\tgot: %v", expected, ids)
+			return
+		}
+	}
+}
+
+func AssertSelect(t *testing.T, db *gorm.DB, expected []string, query string) {
+	params, err := QueryParser.Parse([]byte(query))
+	must(t, err, "parse query: %s", query)
+	var values []string
+	err = db.Model(User{}).
+		Limit(params.Limit).
+		Select(params.Select).
+		Pluck(params.Select, &values).Error
+	must(t, err, "select values")
+	if len(values) != len(expected) {
+		t.Errorf("AssertSelect:\n\twant: %v\n\tgot: %v", expected, values)
+		return
+	}
+	for i := range expected {
+		if values[i] != expected[i] {
+			t.Errorf("AssertSelect:\n\twant: %v\n\tgot: %v", expected, values)
 			return
 		}
 	}

@@ -544,6 +544,40 @@ func TestParse(t *testing.T) {
 			},
 		},
 		{
+			name: "select one",
+			conf: Config{
+				Model: struct {
+					Age  int    `rql:"filter,sort"`
+					Name string `rql:"filter,sort"`
+				}{},
+				DefaultLimit: 25,
+			},
+			input: []byte(`{
+				"select": ["name"]
+			}`),
+			wantOut: &Params{
+				Limit:  25,
+				Select: "name",
+			},
+		},
+		{
+			name: "select many",
+			conf: Config{
+				Model: struct {
+					Age  int    `rql:"filter,sort"`
+					Name string `rql:"filter,sort"`
+				}{},
+				DefaultLimit: 25,
+			},
+			input: []byte(`{
+				"select": ["name", "age"]
+			}`),
+			wantOut: &Params{
+				Limit:  25,
+				Select: "name, age",
+			},
+		},
+		{
 			name: "custom column name",
 			conf: Config{
 				Model: struct {
@@ -904,6 +938,9 @@ func assertParams(t *testing.T, got *Params, want *Params) {
 	}
 	if got.Sort != want.Sort {
 		t.Fatalf("sort: got: %q want %q", got.Sort, want.Sort)
+	}
+	if got.Select != want.Select {
+		t.Fatalf("select: got: %q want %q", got.Select, want.Select)
 	}
 	if !equalExp(got.FilterExp, want.FilterExp) || !equalExp(want.FilterExp, got.FilterExp) {
 		t.Fatalf("filter expr:\n\tgot: %q\n\twant %q", got.FilterExp, want.FilterExp)

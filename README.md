@@ -160,6 +160,13 @@ For input - ["address.name", "-address.zip.code", "+age"]
 Result is - address_name, address_zip_code DESC, age ASC
 ```
 
+#### `select`
+Select accepts a slice of strings (`[]string`) that is joined with comma (",") to the SQL `SELECT` clause.
+```
+For input - ["name", "age"]
+Result is - "name, age"
+```
+
 #### `filter`
 Filter is the one who is translated to the SQL `WHERE` clause. This object that contains `filterable` fields or the disjunction (`$or`) operator. Each field in the object represents a condition in the `WHERE` clause. It contains a specific value that matched the type of the field or an object of predicates. Let's go over them:
 - Field follows the format: `field: <value>`, means the predicate that will be used is `=`. For example:

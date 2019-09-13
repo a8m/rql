@@ -19,10 +19,18 @@ import (
 // Query is the decoded result of the user input.
 //easyjson:json
 type Query struct {
-	// Limit must be greater than 0 and less than or equal to `LimitMaxValue`.
+	// Limit must be > 0 and <= to `LimitMaxValue`.
 	Limit int `json:"limit,omitempty"`
-	// Offset must be greater than or equal to 0.
+	// Offset must be >= 0.
 	Offset int `json:"offset,omitempty"`
+	// Select contains the list of expressions define the value for the `SELECT` clause.
+	// For example:
+	//
+	//	params, err := p.Parse([]byte(`{
+	//		"select": ["name", "age"]
+	//	}`))
+	//
+	Select []string `json:"select,omitempty"`
 	// Sort contains list of expressions define the value for the `ORDER BY` clause.
 	// In order to return the rows in descending order you can prefix your field with `-`.
 	// For example:
@@ -57,7 +65,10 @@ type Query struct {
 //		return nil, err
 //	}
 //	var users []User
-//	err := db.Where(params.FilterExp, params.FilterArgs...).Order(params.Sort).Find(&users).Error
+//	err := db.Where(params.FilterExp, params.FilterArgs...).
+//		Order(params.Sort).
+//		Find(&users).
+//		Error
 //	if err != nil {
 //		return nil, err
 //	}
@@ -66,9 +77,11 @@ type Query struct {
 type Params struct {
 	// Limit represents the number of rows returned by the SELECT statement.
 	Limit int
-	// Offset specifies the offset of the first row to return, . used for pagination.
+	// Offset specifies the offset of the first row to return. Useful for pagination.
 	Offset int
-	// used as a parameter for the `ORDER BY` clause. For example, "age desc, name".
+	// Select contains the expression for the `SELECT` clause defined in the Query.
+	Select string
+	// Sort used as a parameter for the `ORDER BY` clause. For example, "age desc, name".
 	Sort string
 	// FilterExp and FilterArgs come together and used as a parameters for the `WHERE` clause.
 	//
@@ -179,6 +192,7 @@ func (p *Parser) ParseQuery(q *Query) (pr *Params, err error) {
 	if len(pr.Sort) == 0 && len(p.DefaultSort) > 0 {
 		pr.Sort = p.sort(p.DefaultSort)
 	}
+	pr.Select = strings.Join(q.Select, ", ")
 	parseStatePool.Put(ps)
 	return
 }
