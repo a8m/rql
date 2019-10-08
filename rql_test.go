@@ -369,6 +369,27 @@ func TestParse(t *testing.T) {
 			},
 		},
 		{
+			name: "IN and NIN support",
+			conf: Config{
+				Model: new(struct {
+					Age  int    `rql:"filter"`
+					Name string `rql:"filter"`
+				}),
+				DefaultLimit: 25,
+			},
+			input: []byte(`{
+				"filter": {
+					"age": { "$in": [1,2,3] },
+					"name": { "$nin": ["bilbo", "bob"] }
+				}
+			}`),
+			wantOut: &Params{
+				Limit:      25,
+				FilterExp:  "age IN (?,?,?) AND name NOT IN (?,?)",
+				FilterArgs: []interface{}{1, 2, 3, "bilbo", "bob"},
+			},
+		},
+		{
 			name: "valid operations",
 			conf: Config{
 				Model: new(struct {
@@ -915,10 +936,12 @@ func TestParse(t *testing.T) {
 			if err != nil {
 				t.Fatalf("failed to build parser: %v", err)
 			}
+
 			out, err := p.Parse(tt.input)
 			if tt.wantErr != (err != nil) {
 				t.Fatalf("want: %v\ngot:%v\nerr: %v", tt.wantErr, err != nil, err)
 			}
+
 			assertParams(t, out, tt.wantOut)
 		})
 	}
@@ -930,6 +953,7 @@ func assertParams(t *testing.T, got *Params, want *Params) {
 	if got == nil && want == nil {
 		return
 	}
+
 	if got.Limit != want.Limit {
 		t.Fatalf("limit: got: %v want %v", got.Limit, want.Limit)
 	}
@@ -951,6 +975,7 @@ func assertParams(t *testing.T, got *Params, want *Params) {
 }
 
 func equalArgs(a, b []interface{}) bool {
+
 	seen := make([]bool, len(b))
 	for _, arg1 := range a {
 		var found bool
@@ -993,7 +1018,7 @@ func equalExp(e1, e2 string) bool {
 
 func split(e string) []string {
 	var s []string
-	for len(e) > 0 {
+	for len(e) > 0 { // TODO: stuck in loop when parsing (?,?,?) instead of ?
 		if e[0] == '(' {
 			end := strings.LastIndexByte(e, ')') + 1
 			s = append(s, e[:end])
