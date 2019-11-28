@@ -142,13 +142,18 @@ func TestParse(t *testing.T) {
 					"$or": [
 						{ "address": "DC" },
 						{ "address": "Marvel" }
+					],
+					"$and": [
+						{ "age": { "$neq": 10} },
+						{ "age": { "$neq": 20} },
+						{ "$or": [{ "age": 11 }, {"age": 10}] }
 					]
 				}
 			}`),
 			wantOut: &Params{
 				Limit:      25,
-				FilterExp:  "name = ? AND age = ? AND (address = ? OR address = ?)",
-				FilterArgs: []interface{}{"foo", 12, "DC", "Marvel"},
+				FilterExp:  "name = ? AND age = ? AND (address = ? OR address = ?) AND (age <> ? AND age <> ? AND (age = ? OR age = ?))",
+				FilterArgs: []interface{}{"foo", 12, "DC", "Marvel", 10, 20, 11, 10},
 			},
 		},
 		{
@@ -951,6 +956,9 @@ func assertParams(t *testing.T, got *Params, want *Params) {
 }
 
 func equalArgs(a, b []interface{}) bool {
+	if len(a) != len(b) {
+		return false
+	}
 	seen := make([]bool, len(b))
 	for _, arg1 := range a {
 		var found bool

@@ -402,7 +402,11 @@ func (p *parseState) and(f map[string]interface{}) {
 		case k == p.op(OR):
 			terms, ok := v.([]interface{})
 			expect(ok, "$or must be type array")
-			p.or(terms)
+			p.relOp(OR, terms)
+		case k == p.op(AND):
+			terms, ok := v.([]interface{})
+			expect(ok, "$and must be type array")
+			p.relOp(AND, terms)
 		case p.fields[k] != nil:
 			expect(p.fields[k].Filterable, "field %q is not filterable", k)
 			p.field(p.fields[k], v)
@@ -413,17 +417,19 @@ func (p *parseState) and(f map[string]interface{}) {
 	}
 }
 
-func (p *parseState) or(terms []interface{}) {
+func (p *parseState) relOp(op Op, terms []interface{}) {
 	var i int
 	if len(terms) > 1 {
 		p.WriteByte('(')
 	}
 	for _, t := range terms {
 		if i > 0 {
-			p.WriteString(" OR ")
+			p.WriteByte(' ')
+			p.WriteString(op.SQL())
+			p.WriteByte(' ')
 		}
 		mt, ok := t.(map[string]interface{})
-		expect(ok, "expressions for $or operator must be type object")
+		expect(ok, "expressions for $%s operator must be type object", op)
 		p.and(mt)
 		i++
 	}
