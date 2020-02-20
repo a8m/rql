@@ -181,7 +181,7 @@ func (p *Parser) ParseQuery(q *Query) (pr *Params, err error) {
 	expect(q.Offset >= 0, "offset must be greater than or equal to 0")
 	pr.Offset = q.Offset
 	if q.Limit != 0 {
-		expect(q.Limit > 0 && q.Limit <= p.LimitMaxValue, "limit must be greater than 0 and less than or equal to %d", p.Model)
+		expect(q.Limit > 0 && q.Limit <= p.LimitMaxValue, "limit must be greater than 0 and less than or equal to %d", p.LimitMaxValue)
 		pr.Limit = q.Limit
 	}
 	ps := p.newParseState()
