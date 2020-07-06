@@ -120,6 +120,11 @@ type field struct {
 	CovertFn func(interface{}) interface{}
 }
 
+// Dialect implements a dialect for handling argument formatting
+type Dialect interface {
+	FormatOp(col string, op Op, argn int) string
+}
+
 // A Parser parses various types. The result from the Parse method is a Param object.
 // It is safe for concurrent use by multiple goroutines except for configuration changes.
 type Parser struct {
@@ -349,6 +354,7 @@ type parseState struct {
 	*Parser                     // reference of the parser config
 	*bytes.Buffer               // query builder
 	values        []interface{} // query values
+	argN          int           // current arg counter
 }
 
 var parseStatePool sync.Pool
@@ -467,7 +473,10 @@ func (p *parseState) field(f *field, v interface{}) {
 
 // fmtOp create a string for the operation with a placeholder.
 // for example: "name = ?", or "age >= ?".
-func (p *Parser) fmtOp(field string, op Op) string {
+func (p *parseState) fmtOp(field string, op Op) string {
+	if p.Dialect != nil {
+		return p.Dialect.FormatOp(p.colName(field), op, p.argN)
+	}
 	colName := p.colName(field)
 	return colName + " " + op.SQL() + " ?"
 }

@@ -136,6 +136,9 @@ type Config struct {
 	// DefaultSort is the default value for the 'Sort' field that returns when no sort expression is supplied by the caller.
 	// It defaults to an empty string slice.
 	DefaultSort []string
+	// Dialect provides a formatter for argments
+	// This is useful for postgres like syntax that requires $1...$n rather than ?
+	Dialect Dialect
 }
 
 // defaults sets the default configuration of Config.
