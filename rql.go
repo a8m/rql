@@ -93,6 +93,10 @@ type Params struct {
 	// 	   Args: "a8m", 22
 	FilterExp  string
 	FilterArgs []interface{}
+	// PositionalParams if true will append a numerical suffix to the ParamSymbol, i.e. ?1, ?2, etc.
+	PositionalParams bool
+	// ParamSymbol is the placehold for parameters in the Filter expression the default is '?', postgres for example uses '$'
+	ParamSymbol string
 }
 
 // ParseError is type of error returned when there is a parsing problem.
@@ -189,6 +193,8 @@ func (p *Parser) ParseQuery(q *Query) (pr *Params, err error) {
 	pr.FilterExp = ps.String()
 	pr.FilterArgs = ps.values
 	pr.Sort = p.sort(q.Sort)
+	pr.PositionalParams = p.PositionalParams
+	pr.ParamSymbol = p.ParamSymbol
 	if len(pr.Sort) == 0 && len(p.DefaultSort) > 0 {
 		pr.Sort = p.sort(p.DefaultSort)
 	}
@@ -349,6 +355,7 @@ type parseState struct {
 	*Parser                     // reference of the parser config
 	*bytes.Buffer               // query builder
 	values        []interface{} // query values
+	argN          int           // current arg counter
 }
 
 var parseStatePool sync.Pool
@@ -367,6 +374,7 @@ func (p *Parser) newParseState() (ps *parseState) {
 	}
 	ps.values = make([]interface{}, 0, 8)
 	ps.Parser = p
+	ps.argN = 0
 	return
 }
 
@@ -467,9 +475,15 @@ func (p *parseState) field(f *field, v interface{}) {
 
 // fmtOp create a string for the operation with a placeholder.
 // for example: "name = ?", or "age >= ?".
-func (p *Parser) fmtOp(field string, op Op) string {
+func (p *parseState) fmtOp(field string, op Op) string {
+	param := p.ParamSymbol
+	if p.PositionalParams {
+		param = fmt.Sprintf("%s%d", p.ParamSymbol, p.argN+p.ParamOffset)
+	}
+	p.argN++
+
 	colName := p.colName(field)
-	return colName + " " + op.SQL() + " ?"
+	return colName + " " + op.SQL() + " " + param
 }
 
 // colName formats the query field to database column name in cases the user configured a custom
