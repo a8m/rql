@@ -93,6 +93,10 @@ type Params struct {
 	// 	   Args: "a8m", 22
 	FilterExp  string
 	FilterArgs []interface{}
+	// PositionalParams if true will append a numerical suffix to the ParamSymbol, i.e. ?1, ?2, etc.
+	PositionalParams bool
+	// ParamSymbol is the placehold for parameters in the Filter expression the default is '?', postgres for example uses '$'
+	ParamSymbol string
 }
 
 // ParseError is type of error returned when there is a parsing problem.
@@ -118,11 +122,6 @@ type field struct {
 	ValidateFn func(interface{}) error
 	// ConvertFn converts the given value to the type value.
 	CovertFn func(interface{}) interface{}
-}
-
-// Dialect implements a dialect for handling argument formatting
-type Dialect interface {
-	FormatOp(col string, op Op, argn int) string
 }
 
 // A Parser parses various types. The result from the Parse method is a Param object.
@@ -194,6 +193,8 @@ func (p *Parser) ParseQuery(q *Query) (pr *Params, err error) {
 	pr.FilterExp = ps.String()
 	pr.FilterArgs = ps.values
 	pr.Sort = p.sort(q.Sort)
+	pr.PositionalParams = p.PositionalParams
+	pr.ParamSymbol = p.ParamSymbol
 	if len(pr.Sort) == 0 && len(p.DefaultSort) > 0 {
 		pr.Sort = p.sort(p.DefaultSort)
 	}
@@ -373,6 +374,7 @@ func (p *Parser) newParseState() (ps *parseState) {
 	}
 	ps.values = make([]interface{}, 0, 8)
 	ps.Parser = p
+	ps.argN = 0
 	return
 }
 
@@ -474,11 +476,14 @@ func (p *parseState) field(f *field, v interface{}) {
 // fmtOp create a string for the operation with a placeholder.
 // for example: "name = ?", or "age >= ?".
 func (p *parseState) fmtOp(field string, op Op) string {
-	if p.Dialect != nil {
-		return p.Dialect.FormatOp(p.colName(field), op, p.argN)
+	param := p.ParamSymbol
+	if p.PositionalParams {
+		param = fmt.Sprintf("%s%d", p.ParamSymbol, p.argN+p.ParamOffset)
 	}
+	p.argN++
+
 	colName := p.colName(field)
-	return colName + " " + op.SQL() + " ?"
+	return colName + " " + op.SQL() + " " + param
 }
 
 // colName formats the query field to database column name in cases the user configured a custom

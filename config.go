@@ -29,13 +29,15 @@ const (
 
 // Default values for configuration.
 const (
-	DefaultTagName  = "rql"
-	DefaultOpPrefix = "$"
-	DefaultFieldSep = "_"
-	DefaultLimit    = 25
-	DefaultMaxLimit = 100
-	Offset          = "offset"
-	Limit           = "limit"
+	DefaultTagName     = "rql"
+	DefaultOpPrefix    = "$"
+	DefaultFieldSep    = "_"
+	DefaultLimit       = 25
+	DefaultMaxLimit    = 100
+	DefaultParamOffset = 1
+	DefaultParamSymbol = "?"
+	Offset             = "offset"
+	Limit              = "limit"
 )
 
 var (
@@ -136,9 +138,14 @@ type Config struct {
 	// DefaultSort is the default value for the 'Sort' field that returns when no sort expression is supplied by the caller.
 	// It defaults to an empty string slice.
 	DefaultSort []string
-	// Dialect provides a formatter for argments
-	// This is useful for postgres like syntax that requires $1...$n rather than ?
-	Dialect Dialect
+	// ParamSymbol is the placehold for parameters in the Filter expression the default is '?', postgres for example uses '$'
+	ParamSymbol string
+	// PositionalParams if true will append a numerical suffix to the ParamSymbol, i.e. ?1, ?2, etc.
+	PositionalParams bool
+	// ParamOffset is the zero-based parameter offset added to positional parameters
+	// This allows the parameters to begin at another offeset and useful when the FilterExp falls after other arguments
+	// manually numbered in the SQL statement, the default is 1
+	ParamOffset int
 }
 
 // defaults sets the default configuration of Config.
@@ -155,11 +162,13 @@ func (c *Config) defaults() error {
 	if c.ColumnFn == nil {
 		c.ColumnFn = Column
 	}
+	defaultString(&c.ParamSymbol, DefaultParamSymbol)
 	defaultString(&c.TagName, DefaultTagName)
 	defaultString(&c.OpPrefix, DefaultOpPrefix)
 	defaultString(&c.FieldSep, DefaultFieldSep)
 	defaultInt(&c.DefaultLimit, DefaultLimit)
 	defaultInt(&c.LimitMaxValue, DefaultMaxLimit)
+	defaultInt(&c.ParamOffset, DefaultParamOffset)
 	return nil
 }
 

@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode"
 )
 
 func TestInit(t *testing.T) {
@@ -929,6 +930,102 @@ func TestParse(t *testing.T) {
 	}
 }
 
+func TestExtensions(t *testing.T) {
+	tests := []struct {
+		name    string
+		conf    Config
+		input   []byte
+		wantErr bool
+		wantOut *Params
+	}{
+		{
+			name: "alternate parameter symbol test",
+			conf: Config{
+				Model: new(struct {
+					Age     int    `rql:"filter"`
+					Name    string `rql:"filter"`
+					Address string `rql:"filter"`
+					Other   string
+				}),
+				ParamSymbol:  "@",
+				DefaultLimit: 25,
+			},
+			input: []byte(`{
+					"filter": {
+						"name": "foo",
+						"age": 12,
+						"$or": [
+							{ "address": "DC" },
+							{ "address": "Marvel" }
+						],
+						"$and": [
+							{ "age": { "$neq": 10} },
+							{ "age": { "$neq": 20} },
+							{ "$or": [{ "age": 11 }, {"age": 10}] }
+						]
+					}
+				}`),
+			wantOut: &Params{
+				Limit:       25,
+				FilterExp:   "name = @ AND age = @ AND (address = @ OR address = @) AND (age <> @ AND age <> @ AND (age = @ OR age = @))",
+				FilterArgs:  []interface{}{"foo", 12, "DC", "Marvel", 10, 20, 11, 10},
+				ParamSymbol: "@",
+			},
+		},
+		{
+			name: "positional parameter symbol test",
+			conf: Config{
+				Model: new(struct {
+					Age     int    `rql:"filter"`
+					Name    string `rql:"filter"`
+					Address string `rql:"filter"`
+					Other   string
+				}),
+				ParamSymbol:      "$",
+				PositionalParams: true,
+				DefaultLimit:     25,
+			},
+			input: []byte(`{
+				"filter": {
+					"name": "foo",
+					"age": 12,
+					"$or": [
+						{ "address": "DC" },
+						{ "address": "Marvel" }
+					],
+					"$and": [
+						{ "age": { "$neq": 10} },
+						{ "age": { "$neq": 20} },
+						{ "$or": [{ "age": 11 }, {"age": 10}] }
+					]
+				}
+			}`),
+			wantOut: &Params{
+				Limit:            25,
+				FilterExp:        "name = $1 AND age = $2 AND (address = $3 OR address = $4) AND (age <> $5 AND age <> $6 AND (age = $7 OR age = $8))",
+				FilterArgs:       []interface{}{"foo", 12, "DC", "Marvel", 10, 20, 11, 10},
+				ParamSymbol:      "$",
+				PositionalParams: true,
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.conf.Log = t.Logf
+			p, err := NewParser(tt.conf)
+			if err != nil {
+				t.Fatalf("failed to build parser: %v", err)
+			}
+			out, err := p.Parse(tt.input)
+			if tt.wantErr != (err != nil) {
+				t.Fatalf("want: %v\ngot:%v\nerr: %v", tt.wantErr, err != nil, err)
+			}
+			assertParams(t, out, tt.wantOut)
+		})
+	}
+}
+
 // AssertQueryEqual tests if two query input are equal.
 // TODO: improve this in the future.
 func assertParams(t *testing.T, got *Params, want *Params) {
@@ -947,9 +1044,11 @@ func assertParams(t *testing.T, got *Params, want *Params) {
 	if got.Select != want.Select {
 		t.Fatalf("select: got: %q want %q", got.Select, want.Select)
 	}
-	if !equalExp(got.FilterExp, want.FilterExp) || !equalExp(want.FilterExp, got.FilterExp) {
+
+	if !equalExp(got.FilterExp, want.FilterExp, got.ParamSymbol, got.PositionalParams) || !equalExp(want.FilterExp, got.FilterExp, want.ParamSymbol, want.PositionalParams) {
 		t.Fatalf("filter expr:\n\tgot: %q\n\twant %q", got.FilterExp, want.FilterExp)
 	}
+
 	if !equalArgs(got.FilterArgs, got.FilterArgs) || !equalArgs(want.FilterArgs, got.FilterArgs) {
 		t.Fatalf("filter args:\n\tgot: %v\n\twant %v", got.FilterArgs, want.FilterArgs)
 	}
@@ -977,14 +1076,17 @@ func equalArgs(a, b []interface{}) bool {
 	return true
 }
 
-func equalExp(e1, e2 string) bool {
-	s1, s2 := split(e1), split(e2)
+func equalExp(e1, e2 string, pexp string, pos bool) bool {
+	if pexp == "" {
+		pexp = "?"
+	}
+	s1, s2 := split(e1, pexp, pos), split(e2, pexp, pos)
 	for i := range s1 {
 		var found bool
 		for j := range s2 {
 			// if it is a start of conjunction.
 			if s1[i][0] == '(' && s2[j][0] == '(' {
-				found = equalExp(s1[i][1:len(s1[i])-1], s2[j][1:len(s2[j])-1])
+				found = equalExp(s1[i][1:len(s1[i])-1], s2[j][1:len(s2[j])-1], pexp, pos)
 			} else {
 				found = s1[i] == s2[j]
 			}
@@ -999,7 +1101,7 @@ func equalExp(e1, e2 string) bool {
 	return true
 }
 
-func split(e string) []string {
+func split(e string, pexp string, pos bool) []string {
 	var s []string
 	for len(e) > 0 {
 		if e[0] == '(' {
@@ -1007,7 +1109,18 @@ func split(e string) []string {
 			s = append(s, e[:end])
 			e = e[end:]
 		} else {
-			end := strings.IndexByte(e, '?') + 1
+			end := strings.IndexByte(e, pexp[0]) + 1
+			if pos {
+				for {
+					if end >= len(e) {
+						break
+					} else if unicode.IsDigit(rune(e[end])) {
+						end++
+					} else {
+						break
+					}
+				}
+			}
 			s = append(s, e[:end])
 			e = e[end:]
 		}
