@@ -31,7 +31,7 @@ const (
 const (
 	DefaultTagName  = "rql"
 	DefaultOpPrefix = "$"
-	DefaultFieldSep = "_"
+	DefaultFieldSep = "."
 	DefaultLimit    = 25
 	DefaultMaxLimit = 100
 	Offset          = "offset"
