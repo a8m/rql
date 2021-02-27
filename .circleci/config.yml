@@ -2,7 +2,7 @@ version: 2
 jobs:
   unit:
     docker:
-    - image: circleci/golang:1.14
+    - image: circleci/golang:1.16
     working_directory: /go/src/github.com/a8m/rql
     steps:
     - checkout
