@@ -38,7 +38,7 @@ var p = MustNewParser(Config{
 
 func BenchmarkLargeQuery(b *testing.B) {
 	for i := 0; i < b.N; i++ {
-		p.Parse([]byte(`{
+		_, err := p.Parse([]byte(`{
 		"filter": {
 			"admin": true,
 			"name": "foo",
@@ -64,12 +64,15 @@ func BenchmarkLargeQuery(b *testing.B) {
 		"offset": 100,
 		"limit": 10
 	}`))
+		if err != nil {
+			b.Error(err)
+		}
 	}
 }
 
 func BenchmarkMediumQuery(b *testing.B) {
 	for i := 0; i < b.N; i++ {
-		p.Parse([]byte(`{
+		_, err := p.Parse([]byte(`{
 		"filter": {
 			"name": "foo",
 			"address.name": "bar",
@@ -83,12 +86,16 @@ func BenchmarkMediumQuery(b *testing.B) {
 		"offset": 100,
 		"limit": 10
 	}`))
+		if err != nil {
+			b.Error(err)
+		}
+
 	}
 }
 
 func BenchmarkSmallQuery(b *testing.B) {
 	for i := 0; i < b.N; i++ {
-		p.Parse([]byte(`{
+		_, err := p.Parse([]byte(`{
 		"filter": {
 			"address.name": "TLV",
 			"admin": true
@@ -96,5 +103,8 @@ func BenchmarkSmallQuery(b *testing.B) {
 		"offset": 25,
 		"limit": 10
 	}`))
+		if err != nil {
+			b.Error(err)
+		}
 	}
 }
