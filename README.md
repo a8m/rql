@@ -265,6 +265,16 @@ fmt.Println(params.FilterArgs)	// [true]
 In this case you've a valid generated `rql.Param` object and you can pass its to your favorite package connector.
 
 ```go
+// entgo.io (A type-safe entity framework)
+users, err := client.User.Query().
+    Where(func(s *sql.Selector) {
+        s.Where(sql.ExprP(p.FilterExp, p.FilterArgs...))
+    }).
+    Limit(p.Limit).
+    Offset(p.Offset).
+    All(ctx)
+must(err, "failed to query ent")
+
 var users []User
 
 // gorm
