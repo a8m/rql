@@ -12,7 +12,7 @@ services:
     command: ['go', 'test', '-v', 'github.com/a8m/rql/integration']
 
   mysql:
-    image: mariadb:10.3.6
+    image: mysql
     environment:
       MYSQL_ROOT_PASSWORD: pass
       MYSQL_DATABASE: test
