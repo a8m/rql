@@ -265,8 +265,10 @@ fmt.Println(params.FilterArgs)	// [true]
 In this case you've a valid generated `rql.Param` object and you can pass its to your favorite package connector.
 
 ```go
+var users []*User
+
 // entgo.io (A type-safe entity framework)
-users, err := client.User.Query().
+users, err = client.User.Query().
     Where(func(s *sql.Selector) {
         s.Where(sql.ExprP(p.FilterExp, p.FilterArgs...))
     }).
@@ -275,10 +277,8 @@ users, err := client.User.Query().
     All(ctx)
 must(err, "failed to query ent")
 
-var users []User
-
 // gorm
-err := db.Where(p.FilterExp, p.FilterArgs).
+err = db.Where(p.FilterExp, p.FilterArgs).
 	Offset(p.Offset).
 	Limit(p.Limit).
 	Order(p.Sort).
@@ -286,14 +286,14 @@ err := db.Where(p.FilterExp, p.FilterArgs).
 must(err, "failed to query gorm")
 
 // xorm
-err := engine.Where(p.FilterExp, p.FilterArgs...).
+err = engine.Where(p.FilterExp, p.FilterArgs...).
 	Limit(p.Limit, p.Offset).
 	OrderBy(p.Sort).
 	Find(&users)
 must(err, "failed to query xorm")
 
 // go-pg/pg
-err := db.Model(&users).
+err = db.Model(&users).
 	Where(p.FilterExp, p.FilterArgs).
 	Offset(p.Offest).
 	Limit(p.Limit).
