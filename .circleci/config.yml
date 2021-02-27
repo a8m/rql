@@ -1,29 +1,78 @@
-version: 2
-jobs:
-  unit:
-    docker:
-    - image: circleci/golang:1.16
-    working_directory: /go/src/github.com/a8m/rql
-    steps:
-    - checkout
-    - run: go get -v -t -d ./...
-    - run: go test -v
+version: 2.1
 
-  integration:
-    machine:
-      image: circleci/classic:201808-01
-    working_directory: /home/circleci/.go_workspace/src/github.com/a8m/rql
-    environment:
-      GOPATH: /home/circleci/.go_workspace
+aliases:
+  - &mktestdir
+    run:
+      name: Create results directory
+      command: mkdir -p ~/test-results
+
+  - &storetestdir
+    store_test_results:
+      path: ~/test-results
+
+orbs:
+  go: circleci/go@1.5.0
+
+commands:
+  getmods:
+    steps:
+      - go/load-cache
+      - go/mod-download
+      - go/save-cache
+
+jobs:
+  lint:
+    docker:
+    - image: golangci/golangci-lint:v1.28-alpine
+    steps:
+      - checkout
+      - *mktestdir
+      - run:
+          name: Run linters
+          command: golangci-lint run --timeout 5m --out-format junit-xml > ~/test-results/lint.xml
+      - *storetestdir
+  unit:
+    executor:
+      name: go/default
+      tag: '1.16'
     steps:
     - checkout
-    - run: make -C integration test
+    - *mktestdir
+    - getmods
+    - run:
+        name: Unit tests
+        command: gotestsum -f short-verbose --junitfile ~/test-results/rql.xml
+        working_directory: .
+    - *storetestdir
+  integration:
+    docker: &integration-docker
+      - image: circleci/golang:1.16
+        environment:
+          MYSQL_DSN: root:pass@tcp(localhost:3306)/test
+      - image: circleci/mysql
+        environment:
+          MYSQL_DATABASE: test
+          MYSQL_ROOT_PASSWORD: pass
+    steps:
+      - checkout
+      - run: &integration-wait
+          name: Wait for databases
+          command: >-
+            dockerize -timeout 2m
+            -wait tcp://localhost:3306
+      - *mktestdir
+      - getmods
+      - run:
+          name: Run integration tests
+          working_directory: integration
+          command: gotestsum -f short-verbose --junitfile ~/test-results/integration.xml -- -race .
+      - *storetestdir
 
 workflows:
-  version: 2
+  version: 2.1
   all:
     jobs:
+    - lint
     - unit
-    - integration:
-        requires:
-        - unit
+    - integration
+

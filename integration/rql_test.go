@@ -14,7 +14,7 @@ import (
 
 var (
 	CreateTime, _ = time.Parse(time.RFC3339, "2000-05-16T16:00:00.000Z")
-	MySQLConn     = os.Getenv("CONN_STRING")
+	MySQLConn     = os.Getenv("MYSQL_DSN")
 	QueryParser   = rql.MustNewParser(rql.Config{
 		Model:    User{},
 		FieldSep: ".",
@@ -117,7 +117,7 @@ func AssertSelect(t *testing.T, db *gorm.DB, expected []string, query string) {
 
 func Connect(t *testing.T) *gorm.DB {
 	if MySQLConn == "" {
-		t.Fatal("missing database connection string")
+		t.Skip("missing database connection string")
 	}
 	for i := 1; i <= 5; i++ {
 		db, err := gorm.Open("mysql", MySQLConn)
