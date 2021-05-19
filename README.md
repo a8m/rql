@@ -7,8 +7,8 @@
 	<a href="LICENSE">
 		<img src="https://img.shields.io/badge/license-MIT-blue.svg?style=flat-square" alt="LICENSE">
 	</a>
-	<a href="https://travis-ci.org/a8m/rql">
-		<img src="https://img.shields.io/travis/a8m/rql.svg?style=flat-square" alt="Build Status">
+	<a href="https://app.circleci.com/pipelines/github/a8m/rql?branch=master">
+		<img src="https://img.shields.io/circleci/build/github/a8m/rql?style=flat-square" alt="Build Status">
 	</a>
 </p>
 
