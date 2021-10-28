@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 func TestInit(t *testing.T) {
@@ -101,6 +103,12 @@ func TestInit(t *testing.T) {
 			model: new(struct {
 				CreatedAt time.Time `rql:"filter,layout=2006-01-02 15:04"`
 				UpdatedAt time.Time `rql:"filter,layout=Kitchen"`
+			}),
+		},
+		{
+			name: "uuid format",
+			model: new(struct {
+				ID uuid.UUID `rql:"filter"`
 			}),
 		},
 	}
@@ -370,6 +378,32 @@ func TestParse(t *testing.T) {
 					mustParseTime(time.RFC3339, "2018-01-14T06:05:48.839Z"),
 					mustParseTime(time.RFC3339, "2018-01-14T06:05:48.839Z"),
 					mustParseTime(time.RFC3339, "2018-01-14T06:05:48.839Z"),
+				},
+			},
+		},
+		{
+			name: "uuid",
+			conf: Config{
+				Model: func() interface{} {
+					return struct {
+						ID         uuid.UUID  `rql:"filter"`
+						ExternalID *uuid.UUID `rql:"filter"`
+					}{}
+				}(),
+				DefaultLimit: 25,
+			},
+			input: []byte(`{
+				"filter": {
+					"id": "e701d193-420f-47db-9daf-2234bfcbb986",
+					"external_id": "91aa0f70-7f2e-4e7b-b418-3a46dc48cdd9"
+				}
+			}`),
+			wantOut: &Params{
+				Limit:     25,
+				FilterExp: "id = ? AND external_id = ?",
+				FilterArgs: []interface{}{
+					mustParseUUID("e701d193-420f-47db-9daf-2234bfcbb986"),
+					mustParseUUID("91aa0f70-7f2e-4e7b-b418-3a46dc48cdd9"),
 				},
 			},
 		},
@@ -1020,4 +1054,9 @@ func split(e string) []string {
 func mustParseTime(layout, s string) time.Time {
 	t, _ := time.Parse(layout, s)
 	return t
+}
+
+func mustParseUUID(s string) uuid.UUID {
+	id, _ := uuid.Parse(s)
+	return id
 }
