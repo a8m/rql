@@ -12,6 +12,8 @@ import (
 	"sync"
 	"time"
 	"unicode"
+
+	"github.com/google/uuid"
 )
 
 //go:generate easyjson -omit_empty -disallow_unknown_fields -snake_case rql.go
@@ -308,6 +310,13 @@ func (p *Parser) parseField(sf reflect.StructField) error {
 	case reflect.Float32, reflect.Float64:
 		f.ValidateFn = validateFloat
 		filterOps = append(filterOps, EQ, NEQ, LT, LTE, GT, GTE)
+	case reflect.Array:
+		switch v := reflect.Zero(typ); v.Interface().(type) {
+		case uuid.UUID, uuid.NullUUID:
+			f.ValidateFn = validateUUID
+			f.CovertFn = convertUUID
+			filterOps = append(filterOps, EQ, NEQ)
+		}
 	case reflect.Struct:
 		switch v := reflect.Zero(typ); v.Interface().(type) {
 		case sql.NullBool:
@@ -578,6 +587,16 @@ func validateTime(layout string) func(interface{}) error {
 	}
 }
 
+func validateUUID(v interface{}) error {
+	s, ok := v.(string)
+	if !ok {
+		return errorType(v, "string")
+	}
+
+	_, err := uuid.Parse(s)
+	return err
+}
+
 // convert float to int.
 func convertInt(v interface{}) interface{} {
 	return int(v.(float64))
@@ -589,6 +608,11 @@ func convertTime(layout string) func(interface{}) interface{} {
 		t, _ := time.Parse(layout, v.(string))
 		return t
 	}
+}
+
+func convertUUID(v interface{}) interface{} {
+	id, _ := uuid.Parse(v.(string))
+	return id
 }
 
 // nop converter.
