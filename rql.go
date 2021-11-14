@@ -120,6 +120,8 @@ type field struct {
 	ValidateFn func(interface{}) error
 	// ConvertFn converts the given value to the type value.
 	ConvertFn func(interface{}) interface{}
+	// ValueFn maps the incoming value to the expected DB value
+	ValueFn func(interface{}) interface{}
 }
 
 // A Parser parses various types. The result from the Parse method is a Param object.
@@ -223,6 +225,12 @@ func Column(s string) string {
 	return b.String()
 }
 
+func Value(columnKey string) func(interface{}) interface{} {
+	return func(val interface{}) interface{} {
+		return val
+	}
+}
+
 // init initializes the parser parsing state. it scans the fields
 // in a breath-first-search order and for each one of the field calls parseField.
 func (p *Parser) init() error {
@@ -259,9 +267,11 @@ func (p *Parser) init() error {
 // parseField parses the given struct field tag, and add a rule
 // in the parser according to its type and the options that were set on the tag.
 func (p *Parser) parseField(sf reflect.StructField) error {
+	name := p.ColumnFn(p.colName(sf.Name))
 	f := &field{
-		Name:      p.ColumnFn(p.colName(sf.Name)),
-		ConvertFn: valueFn,
+		Name:      name,
+		ConvertFn: convertFn,
+		ValueFn:   p.ValueFn(name),
 		FilterOps: make(map[string]bool),
 	}
 
@@ -454,9 +464,9 @@ func (p *parseState) field(f *field, v interface{}) {
 	terms, ok := v.(map[string]interface{})
 	// default equality check.
 	if !ok {
-		must(f.ValidateFn(v), "invalid datatype for field %q", f.Name)
+		must(f.ValidateFn(f.ValueFn(v)), "invalid datatype for field %q", f.Name)
 		p.WriteString(p.fmtOp(f.Name, EQ))
-		p.values = append(p.values, f.ConvertFn(v))
+		p.values = append(p.values, f.ConvertFn(f.ValueFn(v)))
 	}
 	var i int
 	if len(terms) > 1 {
@@ -467,9 +477,9 @@ func (p *parseState) field(f *field, v interface{}) {
 			p.WriteString(" AND ")
 		}
 		expect(f.FilterOps[opName], "can not apply op %q on field %q", opName, f.Name)
-		must(f.ValidateFn(opVal), "invalid datatype or format for field %q", f.Name)
+		must(f.ValidateFn(f.ValueFn(opVal)), "invalid datatype or format for field %q", f.Name)
 		p.WriteString(p.fmtOp(f.Name, Op(opName[1:])))
-		p.values = append(p.values, f.ConvertFn(opVal))
+		p.values = append(p.values, f.ConvertFn(f.ValueFn(opVal)))
 		i++
 	}
 	if len(terms) > 1 {
@@ -619,7 +629,7 @@ func convertUUID(v interface{}) interface{} {
 }
 
 // nop converter.
-func valueFn(v interface{}) interface{} {
+func convertFn(v interface{}) interface{} {
 	return v
 }
 

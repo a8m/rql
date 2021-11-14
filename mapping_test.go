@@ -51,6 +51,42 @@ func TestMapping(t *testing.T) {
 				Sort:       "person.age asc",
 			},
 		},
+		{
+			name: "test simple mapping of column values",
+			conf: Config{
+				ValueFn: func(columnName string) func(interface{}) interface{} {
+					return func(val interface{}) interface{} {
+						if columnName == "age" {
+							return val.(float64) + 20
+						}
+						return val
+					}
+				},
+				Model: new(struct {
+					Age     int    `rql:"filter, sort"`
+					Name    string `rql:"filter"`
+					Address string `rql:"filter"`
+				}),
+				DefaultSort:  []string{"+age"},
+				DefaultLimit: 25,
+			},
+			input: []byte(`{
+				"filter": {
+					"name": "foo",
+					"age": 12,
+					"$or": [
+						{ "age": 22 },
+						{ "age": 32 }
+					]
+				}
+			}`),
+			wantOut: &Params{
+				Limit:      25,
+				FilterExp:  "name = ? AND age = ? AND (age = ? OR age = ?)",
+				FilterArgs: []interface{}{"foo", 32, 42, 52},
+				Sort:       "age asc",
+			},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
