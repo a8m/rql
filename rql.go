@@ -119,7 +119,9 @@ type field struct {
 	// Validation for the type. for example, unit8 greater than or equal to 0.
 	ValidateFn func(interface{}) error
 	// ConvertFn converts the given value to the type value.
-	CovertFn func(interface{}) interface{}
+	ConvertFn func(interface{}) interface{}
+	// ValueFn maps the incoming value to the expected DB value
+	ValueFn func(interface{}) interface{}
 }
 
 // A Parser parses various types. The result from the Parse method is a Param object.
@@ -223,6 +225,12 @@ func Column(s string) string {
 	return b.String()
 }
 
+func Value(columnKey string) func(interface{}) interface{} {
+	return func(val interface{}) interface{} {
+		return val
+	}
+}
+
 // init initializes the parser parsing state. it scans the fields
 // in a breath-first-search order and for each one of the field calls parseField.
 func (p *Parser) init() error {
@@ -259,11 +267,14 @@ func (p *Parser) init() error {
 // parseField parses the given struct field tag, and add a rule
 // in the parser according to its type and the options that were set on the tag.
 func (p *Parser) parseField(sf reflect.StructField) error {
+	name := p.ColumnFn(p.colName(sf.Name))
 	f := &field{
-		Name:      p.ColumnFn(sf.Name),
-		CovertFn:  valueFn,
+		Name:      name,
+		ConvertFn: convertFn,
+		ValueFn:   p.ValueFn(name),
 		FilterOps: make(map[string]bool),
 	}
+
 	layout := time.RFC3339
 	opts := strings.Split(sf.Tag.Get(p.TagName), ",")
 	for _, opt := range opts {
@@ -301,11 +312,11 @@ func (p *Parser) parseField(sf reflect.StructField) error {
 		filterOps = append(filterOps, EQ, NEQ, LT, LTE, GT, GTE, LIKE)
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 		f.ValidateFn = validateInt
-		f.CovertFn = convertInt
+		f.ConvertFn = convertInt
 		filterOps = append(filterOps, EQ, NEQ, LT, LTE, GT, GTE)
 	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
 		f.ValidateFn = validateUInt
-		f.CovertFn = convertInt
+		f.ConvertFn = convertInt
 		filterOps = append(filterOps, EQ, NEQ, LT, LTE, GT, GTE)
 	case reflect.Float32, reflect.Float64:
 		f.ValidateFn = validateFloat
@@ -314,7 +325,7 @@ func (p *Parser) parseField(sf reflect.StructField) error {
 		switch v := reflect.Zero(typ); v.Interface().(type) {
 		case uuid.UUID, uuid.NullUUID:
 			f.ValidateFn = validateUUID
-			f.CovertFn = convertUUID
+			f.ConvertFn = convertUUID
 			filterOps = append(filterOps, EQ, NEQ)
 		}
 	case reflect.Struct:
@@ -327,21 +338,21 @@ func (p *Parser) parseField(sf reflect.StructField) error {
 			filterOps = append(filterOps, EQ, NEQ)
 		case sql.NullInt64:
 			f.ValidateFn = validateInt
-			f.CovertFn = convertInt
+			f.ConvertFn = convertInt
 			filterOps = append(filterOps, EQ, NEQ, LT, LTE, GT, GTE)
 		case sql.NullFloat64:
 			f.ValidateFn = validateFloat
 			filterOps = append(filterOps, EQ, NEQ, LT, LTE, GT, GTE)
 		case time.Time:
 			f.ValidateFn = validateTime(layout)
-			f.CovertFn = convertTime(layout)
+			f.ConvertFn = convertTime(layout)
 			filterOps = append(filterOps, EQ, NEQ, LT, LTE, GT, GTE)
 		default:
 			if !v.Type().ConvertibleTo(reflect.TypeOf(time.Time{})) {
 				return fmt.Errorf("rql: field type for %q is not supported", sf.Name)
 			}
 			f.ValidateFn = validateTime(layout)
-			f.CovertFn = convertTime(layout)
+			f.ConvertFn = convertTime(layout)
 			filterOps = append(filterOps, EQ, NEQ, LT, LTE, GT, GTE)
 		}
 	default:
@@ -390,13 +401,13 @@ func (p *Parser) sort(fields []string) string {
 			orderBy = order
 			field = field[1:]
 		}
-		expect(p.fields[field] != nil, "unrecognized key %q for sorting", field)
-		expect(p.fields[field].Sortable, "field %q is not sortable", field)
-		colName := p.colName(field)
+		columnKey := p.ColumnFn(p.colName(field))
+		expect(p.fields[columnKey] != nil, "unrecognized key %q for sorting", field)
+		expect(p.fields[columnKey].Sortable, "field %q is not sortable", field)
 		if orderBy != "" {
-			colName += " " + orderBy
+			columnKey += " " + orderBy
 		}
-		sortParams[i] = colName
+		sortParams[i] = columnKey
 	}
 	return strings.Join(sortParams, ", ")
 }
@@ -407,6 +418,8 @@ func (p *parseState) and(f map[string]interface{}) {
 		if i > 0 {
 			p.WriteString(" AND ")
 		}
+
+		columnKey := p.ColumnFn(p.colName(k))
 		switch {
 		case k == p.op(OR):
 			terms, ok := v.([]interface{})
@@ -416,9 +429,9 @@ func (p *parseState) and(f map[string]interface{}) {
 			terms, ok := v.([]interface{})
 			expect(ok, "$and must be type array")
 			p.relOp(AND, terms)
-		case p.fields[k] != nil:
-			expect(p.fields[k].Filterable, "field %q is not filterable", k)
-			p.field(p.fields[k], v)
+		case p.fields[columnKey] != nil:
+			expect(p.fields[columnKey].Filterable, "field %q is not filterable", columnKey)
+			p.field(p.fields[columnKey], v)
 		default:
 			expect(false, "unrecognized key %q for filtering", k)
 		}
@@ -451,9 +464,9 @@ func (p *parseState) field(f *field, v interface{}) {
 	terms, ok := v.(map[string]interface{})
 	// default equality check.
 	if !ok {
-		must(f.ValidateFn(v), "invalid datatype for field %q", f.Name)
+		must(f.ValidateFn(f.ValueFn(v)), "invalid datatype for field %q", f.Name)
 		p.WriteString(p.fmtOp(f.Name, EQ))
-		p.values = append(p.values, f.CovertFn(v))
+		p.values = append(p.values, f.ConvertFn(f.ValueFn(v)))
 	}
 	var i int
 	if len(terms) > 1 {
@@ -464,9 +477,9 @@ func (p *parseState) field(f *field, v interface{}) {
 			p.WriteString(" AND ")
 		}
 		expect(f.FilterOps[opName], "can not apply op %q on field %q", opName, f.Name)
-		must(f.ValidateFn(opVal), "invalid datatype or format for field %q", f.Name)
+		must(f.ValidateFn(f.ValueFn(opVal)), "invalid datatype or format for field %q", f.Name)
 		p.WriteString(p.fmtOp(f.Name, Op(opName[1:])))
-		p.values = append(p.values, f.CovertFn(opVal))
+		p.values = append(p.values, f.ConvertFn(f.ValueFn(opVal)))
 		i++
 	}
 	if len(terms) > 1 {
@@ -616,7 +629,7 @@ func convertUUID(v interface{}) interface{} {
 }
 
 // nop converter.
-func valueFn(v interface{}) interface{} {
+func convertFn(v interface{}) interface{} {
 	return v
 }
 

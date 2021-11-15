@@ -124,6 +124,14 @@ type Config struct {
 	// 	})
 	//
 	ColumnFn func(string) string
+	// ValueFn is the function that translate the struct field value into table value.
+	// for example, given the following fields and their column values:
+	//	status => 0
+	//
+	// which is a protobuf value, you want to convert it to how the data is stored in the DB, that is:
+	//	status => "pending"
+	//
+	ValueFn func(string) func(interface{}) interface{}
 	// Log the the logging function used to log debug information in the initialization of the parser.
 	// It defaults `to log.Printf`.
 	Log func(string, ...interface{})
@@ -151,6 +159,9 @@ func (c *Config) defaults() error {
 	}
 	if c.ColumnFn == nil {
 		c.ColumnFn = Column
+	}
+	if c.ValueFn == nil {
+		c.ValueFn = Value
 	}
 	defaultString(&c.TagName, DefaultTagName)
 	defaultString(&c.OpPrefix, DefaultOpPrefix)
