@@ -28,7 +28,7 @@ func easyjson4bc42f5bDecodeGithubComA8mRql(in *jlexer.Lexer, out *Query) {
 	}
 	in.Delim('{')
 	for !in.IsDelim('}') {
-		key := in.UnsafeString()
+		key := in.UnsafeFieldName(false)
 		in.WantColon()
 		if in.IsNull() {
 			in.Skip()
@@ -112,6 +112,8 @@ func easyjson4bc42f5bDecodeGithubComA8mRql(in *jlexer.Lexer, out *Query) {
 				}
 				in.Delim('}')
 			}
+		case "search":
+			easyjson4bc42f5bDecodeGithubComA8mRql1(in, &out.Search)
 		default:
 			in.AddError(&jlexer.LexerError{
 				Offset: in.GetPos(),
@@ -132,12 +134,8 @@ func easyjson4bc42f5bEncodeGithubComA8mRql(out *jwriter.Writer, in Query) {
 	_ = first
 	if in.Limit != 0 {
 		const prefix string = ",\"limit\":"
-		if first {
-			first = false
-			out.RawString(prefix[1:])
-		} else {
-			out.RawString(prefix)
-		}
+		first = false
+		out.RawString(prefix[1:])
 		out.Int(int(in.Limit))
 	}
 	if in.Offset != 0 {
@@ -218,6 +216,16 @@ func easyjson4bc42f5bEncodeGithubComA8mRql(out *jwriter.Writer, in Query) {
 			out.RawByte('}')
 		}
 	}
+	if true {
+		const prefix string = ",\"search\":"
+		if first {
+			first = false
+			out.RawString(prefix[1:])
+		} else {
+			out.RawString(prefix)
+		}
+		easyjson4bc42f5bEncodeGithubComA8mRql1(out, in.Search)
+	}
 	out.RawByte('}')
 }
 
@@ -243,4 +251,51 @@ func (v *Query) UnmarshalJSON(data []byte) error {
 // UnmarshalEasyJSON supports easyjson.Unmarshaler interface
 func (v *Query) UnmarshalEasyJSON(l *jlexer.Lexer) {
 	easyjson4bc42f5bDecodeGithubComA8mRql(l, v)
+}
+func easyjson4bc42f5bDecodeGithubComA8mRql1(in *jlexer.Lexer, out *Search) {
+	isTopLevel := in.IsStart()
+	if in.IsNull() {
+		if isTopLevel {
+			in.Consumed()
+		}
+		in.Skip()
+		return
+	}
+	in.Delim('{')
+	for !in.IsDelim('}') {
+		key := in.UnsafeFieldName(false)
+		in.WantColon()
+		if in.IsNull() {
+			in.Skip()
+			in.WantComma()
+			continue
+		}
+		switch key {
+		case "query":
+			out.Query = string(in.String())
+		default:
+			in.AddError(&jlexer.LexerError{
+				Offset: in.GetPos(),
+				Reason: "unknown field",
+				Data:   key,
+			})
+		}
+		in.WantComma()
+	}
+	in.Delim('}')
+	if isTopLevel {
+		in.Consumed()
+	}
+}
+func easyjson4bc42f5bEncodeGithubComA8mRql1(out *jwriter.Writer, in Search) {
+	out.RawByte('{')
+	first := true
+	_ = first
+	if in.Query != "" {
+		const prefix string = ",\"query\":"
+		first = false
+		out.RawString(prefix[1:])
+		out.String(string(in.Query))
+	}
+	out.RawByte('}')
 }

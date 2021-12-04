@@ -239,8 +239,8 @@ var QueryParser = rql.MustNewParser(rql.Config{
 type User struct {
 	ID          uint      `gorm:"primary_key" rql:"filter,sort"`
 	Admin       bool      `rql:"filter"`
-	Name        string    `rql:"filter"`
-	Address     string    `rql:"filter"`
+	Name        string    `rql:"filter,search"`
+	Address     string    `rql:"filter,search"`
 	CreatedAt   time.Time `rql:"filter,sort"`
 }
 ```

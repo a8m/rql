@@ -18,6 +18,11 @@ import (
 
 //go:generate easyjson -omit_empty -disallow_unknown_fields -snake_case rql.go
 
+// Search holds all search-related fields, namely the string the user queried for, but potentially other configuration variables as well.
+type Search struct {
+	Query string `json:"query,omitempty"`
+}
+
 // Query is the decoded result of the user input.
 //easyjson:json
 type Query struct {
@@ -57,6 +62,16 @@ type Query struct {
 	//	}`))
 	//
 	Filter map[string]interface{} `json:"filter,omitempty"`
+
+	// Search is an object that allows to do cross-column searches on a specific model.
+	// The same field can be used to run search queries against search engines, such as ElasticSearch without specifying a concrete column.
+	// An example of a search object
+	//	params, err := p.Parse([]byte(`{
+	//		"search": {
+	//			"query": "golang"
+	//		}
+	//	}`))
+	Search Search `json:"search,omitempty"`
 }
 
 // Params is the parser output after calling to `Parse`. You should pass its
@@ -85,6 +100,8 @@ type Params struct {
 	Select string
 	// Sort used as a parameter for the `ORDER BY` clause. For example, "age desc, name".
 	Sort string
+	// Search is used as a parameter for doing multi-column, case-insensitive searches.
+	Search string
 	// FilterExp and FilterArgs come together and used as a parameters for the `WHERE` clause.
 	//
 	// examples:
@@ -112,6 +129,8 @@ type field struct {
 	Name string
 	// Has a "sort" option in the tag.
 	Sortable bool
+	// Has a "search" option in the tag.
+	Searchable bool
 	// Has a "filter" option in the tag.
 	Filterable bool
 	// All supported operators for this field.
@@ -128,7 +147,8 @@ type field struct {
 // It is safe for concurrent use by multiple goroutines except for configuration changes.
 type Parser struct {
 	Config
-	fields map[string]*field
+	fields           map[string]*field
+	searchableFields []*field
 }
 
 // NewParser creates a new Parser. it fails if the configuration is invalid.
@@ -143,6 +163,14 @@ func NewParser(c Config) (*Parser, error) {
 	if err := p.init(); err != nil {
 		return nil, err
 	}
+
+	// Populate searchable fields so we don't have to recalculate it again when parsing
+	for _, field := range p.fields {
+		if field.Searchable {
+			p.searchableFields = append(p.searchableFields, field)
+		}
+	}
+
 	return p, nil
 }
 
@@ -192,6 +220,7 @@ func (p *Parser) ParseQuery(q *Query) (pr *Params, err error) {
 	ps.and(q.Filter)
 	pr.FilterExp = ps.String()
 	pr.FilterArgs = ps.values
+	pr.Search = p.search(q.Search)
 	pr.Sort = p.sort(q.Sort)
 	if len(pr.Sort) == 0 && len(p.DefaultSort) > 0 {
 		pr.Sort = p.sort(p.DefaultSort)
@@ -281,6 +310,8 @@ func (p *Parser) parseField(sf reflect.StructField) error {
 		switch s := strings.TrimSpace(opt); {
 		case s == "sort":
 			f.Sortable = true
+		case s == "search":
+			f.Searchable = true
 		case s == "filter":
 			f.Filterable = true
 		case strings.HasPrefix(opt, "column"):
@@ -388,6 +419,21 @@ func (p *Parser) newParseState() (ps *parseState) {
 	ps.values = make([]interface{}, 0, 8)
 	ps.Parser = p
 	return
+}
+
+// search build the sort clause.
+func (p *Parser) search(search Search) string {
+	if search.Query == "" || len(p.searchableFields) == 0 {
+		return ""
+	}
+
+	searchSegments := make([]string, len(p.searchableFields))
+	for i, field := range p.searchableFields {
+		expect(p.fields[field.Name] != nil, "unrecognized key %q for searching", field.Name)
+		searchSegments[i] = fmt.Sprintf("%s LIKE LOWER(%%%s%%)", field.Name, search.Query)
+	}
+
+	return strings.Join(searchSegments, " OR ")
 }
 
 // sort build the sort clause.

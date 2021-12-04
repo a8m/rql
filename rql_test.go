@@ -978,6 +978,9 @@ func assertParams(t *testing.T, got *Params, want *Params) {
 	if got.Sort != want.Sort {
 		t.Fatalf("sort: got: %q want %q", got.Sort, want.Sort)
 	}
+	if got.Search != want.Search {
+		t.Fatalf("search: got: %q want %q", got.Search, want.Search)
+	}
 	if got.Select != want.Select {
 		t.Fatalf("select: got: %q want %q", got.Select, want.Select)
 	}
