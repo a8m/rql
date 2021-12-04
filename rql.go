@@ -430,7 +430,7 @@ func (p *Parser) search(search Search) string {
 	searchSegments := make([]string, len(p.searchableFields))
 	for i, field := range p.searchableFields {
 		expect(p.fields[field.Name] != nil, "unrecognized key %q for searching", field.Name)
-		searchSegments[i] = fmt.Sprintf("%s LIKE LOWER(%%%s%%)", field.Name, search.Query)
+		searchSegments[i] = fmt.Sprintf("LOWER(%s) LIKE LOWER('%%%s%%')", field.Name, search.Query)
 	}
 
 	return strings.Join(searchSegments, " OR ")

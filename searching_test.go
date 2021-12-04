@@ -31,7 +31,7 @@ func TestSearching(t *testing.T) {
 			}`),
 			wantOut: &Params{
 				Limit:  25,
-				Search: "name LIKE LOWER(%foo%)",
+				Search: "LOWER(name) LIKE LOWER('%foo%')",
 			},
 		},
 		{
@@ -51,7 +51,7 @@ func TestSearching(t *testing.T) {
 			}`),
 			wantOut: &Params{
 				Limit:  25,
-				Search: "city LIKE LOWER(%foo%) OR name LIKE LOWER(%foo%)",
+				Search: "LOWER(city) LIKE LOWER('%foo%') OR LOWER(name) LIKE LOWER('%foo%')",
 			},
 		},
 		{
@@ -74,7 +74,7 @@ func TestSearching(t *testing.T) {
 			}`),
 			wantOut: &Params{
 				Limit:  25,
-				Search: "person.city LIKE LOWER(%foo%) OR person.name LIKE LOWER(%foo%)",
+				Search: "LOWER(person.city) LIKE LOWER('%foo%') OR LOWER(person.name) LIKE LOWER('%foo%')",
 			},
 		},
 	}
