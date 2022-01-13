@@ -422,6 +422,8 @@ func TestParse(t *testing.T) {
 					"age": { "$gt": 10 },
 					"name": { "$like": "%foo%" },
 					"$or": [
+						{ "name": { "$in": ["foo", "bar"] } },
+						{ "age": { "$nin": [25, 35] } },
 						{ "address": { "$eq": "DC" } },
 						{ "address": { "$neq": "Marvel" } }
 					]
@@ -429,8 +431,8 @@ func TestParse(t *testing.T) {
 			}`),
 			wantOut: &Params{
 				Limit:      25,
-				FilterExp:  "age > ? AND name LIKE ? AND (address = ? OR address <> ?)",
-				FilterArgs: []interface{}{10, "%foo%", "DC", "Marvel"},
+				FilterExp:  "age > ? AND name LIKE ? AND (name IN (?,?) OR age NOT IN (?,?) OR address = ? OR address <> ?)",
+				FilterArgs: []interface{}{10, "%foo%", "foo", "bar", 25, 35, "DC", "Marvel"},
 			},
 		},
 		{

@@ -123,6 +123,10 @@ func (p ParseError) Error() string {
 	return p.msg
 }
 
+type ValidateFn func(v interface{}) error
+type ConvertFn func(v interface{}) interface{}
+type ValueFn func(v interface{}) interface{}
+
 // field is a configuration of a struct field.
 type field struct {
 	// Name of the column.
@@ -136,11 +140,11 @@ type field struct {
 	// All supported operators for this field.
 	FilterOps map[string]bool
 	// Validation for the type. for example, unit8 greater than or equal to 0.
-	ValidateFn func(interface{}) error
+	ValidateFn ValidateFn
 	// ConvertFn converts the given value to the type value.
-	ConvertFn func(interface{}) interface{}
+	ConvertFn ConvertFn
 	// ValueFn maps the incoming value to the expected DB value
-	ValueFn func(interface{}) interface{}
+	ValueFn ValueFn
 }
 
 // A Parser parses various types. The result from the Parse method is a Param object.
@@ -340,18 +344,18 @@ func (p *Parser) parseField(sf reflect.StructField) error {
 		filterOps = append(filterOps, EQ, NEQ)
 	case reflect.String:
 		f.ValidateFn = validateString
-		filterOps = append(filterOps, EQ, NEQ, LT, LTE, GT, GTE, LIKE)
+		filterOps = append(filterOps, EQ, NEQ, LT, LTE, GT, GTE, LIKE, IN, NIN)
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 		f.ValidateFn = validateInt
 		f.ConvertFn = convertInt
-		filterOps = append(filterOps, EQ, NEQ, LT, LTE, GT, GTE)
+		filterOps = append(filterOps, EQ, NEQ, LT, LTE, GT, GTE, IN, NIN)
 	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
 		f.ValidateFn = validateUInt
 		f.ConvertFn = convertInt
-		filterOps = append(filterOps, EQ, NEQ, LT, LTE, GT, GTE)
+		filterOps = append(filterOps, EQ, NEQ, LT, LTE, GT, GTE, IN, NIN)
 	case reflect.Float32, reflect.Float64:
 		f.ValidateFn = validateFloat
-		filterOps = append(filterOps, EQ, NEQ, LT, LTE, GT, GTE)
+		filterOps = append(filterOps, EQ, NEQ, LT, LTE, GT, GTE, IN, NIN)
 	case reflect.Array:
 		switch v := reflect.Zero(typ); v.Interface().(type) {
 		case uuid.UUID, uuid.NullUUID:
@@ -366,25 +370,25 @@ func (p *Parser) parseField(sf reflect.StructField) error {
 			filterOps = append(filterOps, EQ, NEQ)
 		case sql.NullString:
 			f.ValidateFn = validateString
-			filterOps = append(filterOps, EQ, NEQ)
+			filterOps = append(filterOps, EQ, NEQ, IN, NIN)
 		case sql.NullInt64:
 			f.ValidateFn = validateInt
 			f.ConvertFn = convertInt
-			filterOps = append(filterOps, EQ, NEQ, LT, LTE, GT, GTE)
+			filterOps = append(filterOps, EQ, NEQ, LT, LTE, GT, GTE, IN, NIN)
 		case sql.NullFloat64:
 			f.ValidateFn = validateFloat
-			filterOps = append(filterOps, EQ, NEQ, LT, LTE, GT, GTE)
+			filterOps = append(filterOps, EQ, NEQ, LT, LTE, GT, GTE, IN, NIN)
 		case time.Time:
 			f.ValidateFn = validateTime(layout)
 			f.ConvertFn = convertTime(layout)
-			filterOps = append(filterOps, EQ, NEQ, LT, LTE, GT, GTE)
+			filterOps = append(filterOps, EQ, NEQ, LT, LTE, GT, GTE, IN, NIN)
 		default:
 			if !v.Type().ConvertibleTo(reflect.TypeOf(time.Time{})) {
 				return fmt.Errorf("rql: field type for %q is not supported", sf.Name)
 			}
 			f.ValidateFn = validateTime(layout)
 			f.ConvertFn = convertTime(layout)
-			filterOps = append(filterOps, EQ, NEQ, LT, LTE, GT, GTE)
+			filterOps = append(filterOps, EQ, NEQ, LT, LTE, GT, GTE, IN, NIN)
 		}
 	default:
 		return fmt.Errorf("rql: field type for %q is not supported", sf.Name)
@@ -511,7 +515,7 @@ func (p *parseState) field(f *field, v interface{}) {
 	// default equality check.
 	if !ok {
 		must(f.ValidateFn(f.ValueFn(v)), "invalid datatype for field %q", f.Name)
-		p.WriteString(p.fmtOp(f.Name, EQ))
+		p.WriteString(p.fmtOp(f.Name, EQ, 1))
 		p.values = append(p.values, f.ConvertFn(f.ValueFn(v)))
 	}
 	var i int
@@ -523,9 +527,22 @@ func (p *parseState) field(f *field, v interface{}) {
 			p.WriteString(" AND ")
 		}
 		expect(f.FilterOps[opName], "can not apply op %q on field %q", opName, f.Name)
-		must(f.ValidateFn(f.ValueFn(opVal)), "invalid datatype or format for field %q", f.Name)
-		p.WriteString(p.fmtOp(f.Name, Op(opName[1:])))
-		p.values = append(p.values, f.ConvertFn(f.ValueFn(opVal)))
+		validateFn := f.ValidateFn
+		isSlice := isSliceOp(p, opName)
+		if isSlice {
+			validateFn = validateSlice(validateFn)
+		}
+
+		must(validateFn(f.ValueFn(opVal)), "invalid datatype or format for field %q", f.Name)
+		if isSlice {
+			sliceRaw := convertSlice(f.ConvertFn)(opVal)
+			slice, _ := sliceRaw.([]interface{})
+			p.WriteString(p.fmtOp(f.Name, Op(opName[1:]), len(slice)))
+			p.values = append(p.values, slice...)
+		} else {
+			p.WriteString(p.fmtOp(f.Name, Op(opName[1:]), 1))
+			p.values = append(p.values, f.ConvertFn(opVal))
+		}
 		i++
 	}
 	if len(terms) > 1 {
@@ -535,9 +552,13 @@ func (p *parseState) field(f *field, v interface{}) {
 
 // fmtOp create a string for the operation with a placeholder.
 // for example: "name = ?", or "age >= ?".
-func (p *Parser) fmtOp(field string, op Op) string {
+func (p *Parser) fmtOp(field string, op Op, placeHolderCount int) string {
 	colName := p.colName(field)
-	return colName + " " + op.SQL() + " ?"
+	placeHolder := "?"
+	if placeHolderCount > 1 {
+		placeHolder = "(" + strings.Trim(strings.Repeat("?,", placeHolderCount), ",") + ")"
+	}
+	return colName + " " + op.SQL() + " " + placeHolder
 }
 
 // colName formats the query field to database column name in cases the user configured a custom
@@ -679,6 +700,36 @@ func convertFn(v interface{}) interface{} {
 	return v
 }
 
+func validateSlice(fn ValidateFn) ValidateFn {
+	return func(v interface{}) error {
+		vs, ok := v.([]interface{})
+		if !ok {
+			return errorType(v, "slice")
+		}
+
+		for _, v := range vs {
+			if err := fn(v); err != nil {
+				return err
+			}
+		}
+
+		return nil
+	}
+}
+
+func convertSlice(fn ConvertFn) ConvertFn {
+	return func(v interface{}) interface{} {
+		vs, _ := v.([]interface{})
+
+		out := make([]interface{}, 0, len(vs))
+		for _, v := range vs {
+			out = append(out, fn(v))
+		}
+
+		return out
+	}
+}
+
 // layouts holds all standard time.Time layouts.
 var layouts = map[string]string{
 	"ANSIC":       time.ANSIC,
@@ -696,4 +747,13 @@ var layouts = map[string]string{
 	"StampMilli":  time.StampMilli,
 	"StampMicro":  time.StampMicro,
 	"StampNano":   time.StampNano,
+}
+
+func isSliceOp(p *parseState, opName string) bool {
+	for _, op := range sliceOp {
+		if p.op(op) == opName {
+			return true
+		}
+	}
+	return false
 }
