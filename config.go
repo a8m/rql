@@ -25,6 +25,8 @@ const (
 	LIKE = Op("like") // LIKE "PATTERN"
 	OR   = Op("or")   // disjunction
 	AND  = Op("and")  // conjunction
+	IN   = Op("in")   // IN ()
+	NIN  = Op("nin")  // NOT IN ()
 )
 
 // Default values for configuration.
@@ -57,6 +59,13 @@ var (
 		LIKE: "LIKE",
 		OR:   "OR",
 		AND:  "AND",
+		IN:   "IN",
+		NIN:  "NOT IN",
+	}
+
+	sliceOp = []Op{
+		IN,
+		NIN,
 	}
 )
 
