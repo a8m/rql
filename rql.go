@@ -541,7 +541,7 @@ func (p *parseState) field(f *field, v interface{}) {
 			p.values = append(p.values, slice...)
 		} else {
 			p.WriteString(p.fmtOp(f.Name, Op(opName[1:]), 1))
-			p.values = append(p.values, f.ConvertFn(opVal))
+			p.values = append(p.values, f.ConvertFn(f.ValueFn(opVal)))
 		}
 		i++
 	}
