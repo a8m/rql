@@ -361,7 +361,7 @@ func (p *Parser) parseField(sf reflect.StructField) error {
 		case uuid.UUID, uuid.NullUUID:
 			f.ValidateFn = validateUUID
 			f.ConvertFn = convertUUID
-			filterOps = append(filterOps, EQ, NEQ)
+			filterOps = append(filterOps, EQ, NEQ, IN, NIN)
 		}
 	case reflect.Struct:
 		switch v := reflect.Zero(typ); v.Interface().(type) {
@@ -515,7 +515,7 @@ func (p *parseState) field(f *field, v interface{}) {
 	// default equality check.
 	if !ok {
 		must(f.ValidateFn(f.ValueFn(v)), "invalid datatype for field %q", f.Name)
-		p.WriteString(p.fmtOp(f.Name, EQ, 1))
+		p.WriteString(p.fmtOp(f.Name, EQ, 1, false))
 		p.values = append(p.values, f.ConvertFn(f.ValueFn(v)))
 	}
 	var i int
@@ -535,12 +535,12 @@ func (p *parseState) field(f *field, v interface{}) {
 
 		must(validateFn(f.ValueFn(opVal)), "invalid datatype or format for field %q", f.Name)
 		if isSlice {
-			sliceRaw := convertSlice(f.ConvertFn)(opVal)
+			sliceRaw := convertSlice(f.ConvertFn, f.ValueFn)(opVal)
 			slice, _ := sliceRaw.([]interface{})
-			p.WriteString(p.fmtOp(f.Name, Op(opName[1:]), len(slice)))
+			p.WriteString(p.fmtOp(f.Name, Op(opName[1:]), len(slice), true))
 			p.values = append(p.values, slice...)
 		} else {
-			p.WriteString(p.fmtOp(f.Name, Op(opName[1:]), 1))
+			p.WriteString(p.fmtOp(f.Name, Op(opName[1:]), 1, false))
 			p.values = append(p.values, f.ConvertFn(f.ValueFn(opVal)))
 		}
 		i++
@@ -552,10 +552,10 @@ func (p *parseState) field(f *field, v interface{}) {
 
 // fmtOp create a string for the operation with a placeholder.
 // for example: "name = ?", or "age >= ?".
-func (p *Parser) fmtOp(field string, op Op, placeHolderCount int) string {
+func (p *Parser) fmtOp(field string, op Op, placeHolderCount int, wrap bool) string {
 	colName := p.colName(field)
 	placeHolder := "?"
-	if placeHolderCount > 1 {
+	if wrap {
 		placeHolder = "(" + strings.Trim(strings.Repeat("?,", placeHolderCount), ",") + ")"
 	}
 	return colName + " " + op.SQL() + " " + placeHolder
@@ -717,13 +717,13 @@ func validateSlice(fn ValidateFn) ValidateFn {
 	}
 }
 
-func convertSlice(fn ConvertFn) ConvertFn {
+func convertSlice(cFn ConvertFn, vFn ValueFn) ConvertFn {
 	return func(v interface{}) interface{} {
 		vs, _ := v.([]interface{})
 
 		out := make([]interface{}, 0, len(vs))
 		for _, v := range vs {
-			out = append(out, fn(v))
+			out = append(out, cFn(vFn(v)))
 		}
 
 		return out

@@ -34,6 +34,7 @@ func TestMapping(t *testing.T) {
 					"name": "foo",
 					"age": 12,
 					"$or": [
+						{ "name": { "$in": ["foo", "bar"] } },
 						{ "address": "DC" },
 						{ "address": "Marvel" }
 					],
@@ -46,8 +47,8 @@ func TestMapping(t *testing.T) {
 			}`),
 			wantOut: &Params{
 				Limit:      25,
-				FilterExp:  "person.name = ? AND person.age = ? AND (person.address = ? OR person.address = ?) AND (person.age <> ? AND person.age <> ? AND (person.age = ? OR person.age = ?))",
-				FilterArgs: []interface{}{"foo", 12, "DC", "Marvel", 10, 20, 11, 10},
+				FilterExp:  "person.name = ? AND person.age = ? AND (person.name IN (?,?) OR person.address = ? OR person.address = ?) AND (person.age <> ? AND person.age <> ? AND (person.age = ? OR person.age = ?))",
+				FilterArgs: []interface{}{"foo", 12, "foo", "bar", "DC", "Marvel", 10, 20, 11, 10},
 				Sort:       "person.age asc",
 			},
 		},
