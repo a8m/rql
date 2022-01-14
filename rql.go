@@ -555,6 +555,11 @@ func (p *parseState) field(f *field, v interface{}) {
 func (p *Parser) fmtOp(field string, op Op, placeHolderCount int, wrap bool) string {
 	colName := p.colName(field)
 	placeHolder := "?"
+
+	// If there are no placeholders, just return an always-false condition
+	if placeHolderCount == 0 {
+		return "1=0"
+	}
 	if wrap {
 		placeHolder = "(" + strings.Trim(strings.Repeat("?,", placeHolderCount), ",") + ")"
 	}
