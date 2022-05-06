@@ -150,7 +150,7 @@ The top-level query accepts JSON with 4 fields: `offset`, `limit`, `filter` and 
 #### `offset` and `limit`
 These two fields are useful for paging and they are equivalent to `OFFSET` and `LIMIT` in a standard SQL syntax.
 - `offset` must be greater than or equal to 0 and its default value is 0
-- `limit` must be greater than   and less than or equal to the configured `LimitMaxValue`.
+- `limit` must be greater than 0 and less than or equal to the configured `LimitMaxValue`.
    The default value for `LimitMaxValue` is 100
 
 #### `sort`
