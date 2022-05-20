@@ -3,6 +3,7 @@ package integration
 import (
 	"fmt"
 	"os"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -101,7 +102,7 @@ func AssertSelect(t *testing.T, db *gorm.DB, expected []string, query string) {
 	err = db.Model(User{}).
 		Limit(params.Limit).
 		Select(params.Select).
-		Pluck(params.Select, &values).Error
+		Pluck(strings.Join(params.Select, ","), &values).Error
 	must(t, err, "select values")
 	if len(values) != len(expected) {
 		t.Errorf("AssertSelect:\n\twant: %v\n\tgot: %v", expected, values)

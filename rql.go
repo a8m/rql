@@ -97,7 +97,7 @@ type Params struct {
 	// Offset specifies the offset of the first row to return. Useful for pagination.
 	Offset int
 	// Select contains the expression for the `SELECT` clause defined in the Query.
-	Select string
+	Select []string
 	// Sort used as a parameter for the `ORDER BY` clause. For example, "age desc, name".
 	Sort string
 	// Search is used as a parameter for doing multi-column, case-insensitive searches.
@@ -229,7 +229,7 @@ func (p *Parser) ParseQuery(q *Query) (pr *Params, err error) {
 	if len(pr.Sort) == 0 && len(p.DefaultSort) > 0 {
 		pr.Sort = p.sort(p.DefaultSort)
 	}
-	pr.Select = strings.Join(q.Select, ", ")
+	pr.Select = p.selects(q.Select)
 	parseStatePool.Put(ps)
 	return
 }
@@ -438,6 +438,15 @@ func (p *Parser) search(search Search) string {
 	}
 
 	return strings.Join(searchSegments, " OR ")
+}
+
+func (p *Parser) selects(selects []string) []string {
+	res := make([]string, len(selects))
+	for i, key := range selects {
+		res[i] = p.ColumnFn(p.colName(key))
+	}
+
+	return res
 }
 
 // sort build the sort clause.

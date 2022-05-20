@@ -599,7 +599,7 @@ func TestParse(t *testing.T) {
 			}`),
 			wantOut: &Params{
 				Limit:  25,
-				Select: "name",
+				Select: []string{"name"},
 			},
 		},
 		{
@@ -616,7 +616,7 @@ func TestParse(t *testing.T) {
 			}`),
 			wantOut: &Params{
 				Limit:  25,
-				Select: "name, age",
+				Select: []string{"name", "age"},
 			},
 		},
 		{
@@ -984,7 +984,7 @@ func assertParams(t *testing.T, got *Params, want *Params) {
 	if got.Search != want.Search {
 		t.Fatalf("search: got: %q want %q", got.Search, want.Search)
 	}
-	if got.Select != want.Select {
+	if strings.Join(got.Select, ",") != strings.Join(want.Select, ",") {
 		t.Fatalf("select: got: %q want %q", got.Select, want.Select)
 	}
 	if !equalExp(got.FilterExp, want.FilterExp) || !equalExp(want.FilterExp, got.FilterExp) {
