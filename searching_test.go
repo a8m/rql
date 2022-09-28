@@ -31,7 +31,7 @@ func TestSearching(t *testing.T) {
 			}`),
 			wantOut: &Params{
 				Limit:  25,
-				Search: "LOWER(name) LIKE LOWER('%foo%')",
+				Search: "LOWER(name) LIKE LOWER('%' || ? || '%')",
 			},
 		},
 		{
@@ -51,10 +51,10 @@ func TestSearching(t *testing.T) {
 			}`),
 			wantOut: &Params{
 				Limit:  25,
-				Search: "LOWER(city) LIKE LOWER('%foo%') OR LOWER(name) LIKE LOWER('%foo%')",
+				Search: "LOWER(name) LIKE LOWER('%' || ? || '%') OR LOWER(city) LIKE LOWER('%' || ? || '%')",
 			},
 		},
-		{
+		{ // todo: the succes of this is undeterministic, since the order of elements in map is not guaranteed
 			name: "multi-column search with mapping",
 			conf: Config{
 				Model: new(struct {
@@ -74,7 +74,7 @@ func TestSearching(t *testing.T) {
 			}`),
 			wantOut: &Params{
 				Limit:  25,
-				Search: "LOWER(person.city) LIKE LOWER('%foo%') OR LOWER(person.name) LIKE LOWER('%foo%')",
+				Search: "LOWER(person.city) LIKE LOWER('%' || ? || '%') OR LOWER(person.name) LIKE LOWER('%' || ? || '%')",
 			},
 		},
 	}

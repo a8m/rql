@@ -24,6 +24,7 @@ type Search struct {
 }
 
 // Query is the decoded result of the user input.
+//
 //easyjson:json
 type Query struct {
 	// Limit must be > 0 and <= to `LimitMaxValue`.
@@ -90,7 +91,6 @@ type Query struct {
 //		return nil, err
 //	}
 //	return users, nil
-//
 type Params struct {
 	// Limit represents the number of rows returned by the SELECT statement.
 	Limit int
@@ -101,7 +101,9 @@ type Params struct {
 	// Sort used as a parameter for the `ORDER BY` clause. For example, "age desc, name".
 	Sort string
 	// Search is used as a parameter for doing multi-column, case-insensitive searches.
-	Search string
+	// Search and SearchArgs come together and used as a parameters for the `WHERE` clause.
+	Search     string
+	SearchArgs []interface{}
 	// FilterExp and FilterArgs come together and used as a parameters for the `WHERE` clause.
 	//
 	// examples:
@@ -224,7 +226,7 @@ func (p *Parser) ParseQuery(q *Query) (pr *Params, err error) {
 	ps.and(q.Filter)
 	pr.FilterExp = ps.String()
 	pr.FilterArgs = ps.values
-	pr.Search = p.search(q.Search)
+	pr.Search, pr.SearchArgs = p.search(q.Search)
 	pr.Sort = p.sort(q.Sort)
 	if len(pr.Sort) == 0 && len(p.DefaultSort) > 0 {
 		pr.Sort = p.sort(p.DefaultSort)
@@ -240,7 +242,6 @@ func (p *Parser) ParseQuery(q *Query) (pr *Params, err error) {
 //	Username => username
 //	FullName => full_name
 //	HTTPCode => http_code
-//
 func Column(s string) string {
 	var b strings.Builder
 	for i := 0; i < len(s); i++ {
@@ -426,18 +427,19 @@ func (p *Parser) newParseState() (ps *parseState) {
 }
 
 // search build the sort clause.
-func (p *Parser) search(search Search) string {
+func (p *Parser) search(search Search) (q string, args []interface{}) {
 	if search.Query == "" || len(p.searchableFields) == 0 {
-		return ""
+		return "", nil
 	}
-
+	args = make([]interface{}, 0)
 	searchSegments := make([]string, len(p.searchableFields))
-	for i, field := range p.searchableFields {
+	for i, field := range p.searchableFields { // searchable fields are set for given entity, so they are safe
 		expect(p.fields[field.Name] != nil, "unrecognized key %q for searching", field.Name)
-		searchSegments[i] = fmt.Sprintf("LOWER(%s) LIKE LOWER('%%%s%%')", field.Name, search.Query)
+		searchSegments[i] = fmt.Sprintf("LOWER(%s) LIKE LOWER('%%' || ? || '%%')", field.Name)
+		args = append(args, search.Query)
 	}
 
-	return strings.Join(searchSegments, " OR ")
+	return strings.Join(searchSegments, " OR "), args
 }
 
 func (p *Parser) selects(selects []string) []string {
