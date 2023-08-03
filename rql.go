@@ -288,60 +288,125 @@ func (p *Parser) parseField(sf reflect.StructField) error {
 			p.Log("Ignoring unknown option %q in struct tag", opt)
 		}
 	}
-	var filterOps []Op
-	switch typ := indirect(sf.Type); typ.Kind() {
-	case reflect.Bool:
-		f.ValidateFn = validateBool
-		filterOps = append(filterOps, EQ, NEQ)
-	case reflect.String:
-		f.ValidateFn = validateString
-		filterOps = append(filterOps, EQ, NEQ, LT, LTE, GT, GTE, LIKE)
-	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-		f.ValidateFn = validateInt
-		f.CovertFn = convertInt
-		filterOps = append(filterOps, EQ, NEQ, LT, LTE, GT, GTE)
-	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
-		f.ValidateFn = validateUInt
-		f.CovertFn = convertInt
-		filterOps = append(filterOps, EQ, NEQ, LT, LTE, GT, GTE)
-	case reflect.Float32, reflect.Float64:
-		f.ValidateFn = validateFloat
-		filterOps = append(filterOps, EQ, NEQ, LT, LTE, GT, GTE)
-	case reflect.Struct:
-		switch v := reflect.Zero(typ); v.Interface().(type) {
-		case sql.NullBool:
-			f.ValidateFn = validateBool
-			filterOps = append(filterOps, EQ, NEQ)
-		case sql.NullString:
-			f.ValidateFn = validateString
-			filterOps = append(filterOps, EQ, NEQ)
-		case sql.NullInt64:
-			f.ValidateFn = validateInt
-			f.CovertFn = convertInt
-			filterOps = append(filterOps, EQ, NEQ, LT, LTE, GT, GTE)
-		case sql.NullFloat64:
-			f.ValidateFn = validateFloat
-			filterOps = append(filterOps, EQ, NEQ, LT, LTE, GT, GTE)
-		case time.Time:
-			f.ValidateFn = validateTime(layout)
-			f.CovertFn = convertTime(layout)
-			filterOps = append(filterOps, EQ, NEQ, LT, LTE, GT, GTE)
-		default:
-			if !v.Type().ConvertibleTo(reflect.TypeOf(time.Time{})) {
-				return fmt.Errorf("rql: field type for %q is not supported", sf.Name)
-			}
-			f.ValidateFn = validateTime(layout)
-			f.CovertFn = convertTime(layout)
-			filterOps = append(filterOps, EQ, NEQ, LT, LTE, GT, GTE)
-		}
-	default:
+	t := indirect(sf.Type)
+
+	filterOps := GetSupportedOps(t)
+	if len(f.FilterOps) == 0 {
 		return fmt.Errorf("rql: field type for %q is not supported", sf.Name)
 	}
+	f.CovertFn = GetConverterFn(t)
+	f.ValidateFn = GetValidateFn(t)
+
 	for _, op := range filterOps {
 		f.FilterOps[p.op(op)] = true
 	}
 	p.fields[f.Name] = f
 	return nil
+}
+
+func GetValidateFn(t reflect.Type) func(interface{}) error {
+	layout := ""
+	switch t.Kind() {
+	case reflect.Bool:
+		return validateBool
+	case reflect.String:
+		return validateString
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		return validateInt
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
+		return validateUInt
+	case reflect.Float32, reflect.Float64:
+		return validateFloat
+	case reflect.Struct:
+		switch v := reflect.Zero(t); v.Interface().(type) {
+		case sql.NullBool:
+			return validateBool
+		case sql.NullString:
+			return validateString
+		case sql.NullInt64:
+			return validateInt
+		case sql.NullFloat64:
+			return validateFloat
+		case time.Time:
+			return validateTime(layout)
+		default:
+			if !v.Type().ConvertibleTo(reflect.TypeOf(time.Time{})) {
+				return nil
+			}
+			return validateTime(layout)
+		}
+	default:
+		return nil
+	}
+}
+
+func GetConverterFn(t reflect.Type) func(interface{}) interface{} {
+	layout := ""
+	switch t.Kind() {
+	case reflect.Bool:
+		return valueFn
+	case reflect.String:
+		return valueFn
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		return convertInt
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
+		return convertInt
+	case reflect.Float32, reflect.Float64:
+		return valueFn
+	case reflect.Struct:
+		switch v := reflect.Zero(t); v.Interface().(type) {
+		case sql.NullBool:
+			return valueFn
+		case sql.NullString:
+			return valueFn
+		case sql.NullInt64:
+			return convertInt
+		case sql.NullFloat64:
+			return valueFn
+		case time.Time:
+			return convertTime(layout)
+		default:
+			if v.Type().ConvertibleTo(reflect.TypeOf(time.Time{})) {
+				return convertTime(layout)
+			}
+		}
+	}
+	return valueFn
+}
+
+func GetSupportedOps(t reflect.Type) []Op {
+	switch t.Kind() {
+	case reflect.Bool:
+		return []Op{EQ, NEQ}
+	case reflect.String:
+		return []Op{EQ, NEQ, LT, LTE, GT, GTE, LIKE}
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		return []Op{EQ, NEQ, LT, LTE, GT, GTE}
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
+		return []Op{EQ, NEQ, LT, LTE, GT, GTE}
+	case reflect.Float32, reflect.Float64:
+		return []Op{EQ, NEQ, LT, LTE, GT, GTE}
+	case reflect.Struct:
+		switch v := reflect.Zero(t); v.Interface().(type) {
+		case sql.NullBool:
+			return []Op{EQ, NEQ}
+		case sql.NullString:
+			return []Op{EQ, NEQ}
+		case sql.NullInt64:
+			return []Op{EQ, NEQ, LT, LTE, GT, GTE}
+		case sql.NullFloat64:
+			return []Op{EQ, NEQ, LT, LTE, GT, GTE}
+		case time.Time:
+			return []Op{EQ, NEQ, LT, LTE, GT, GTE}
+		default:
+			if v.Type().ConvertibleTo(reflect.TypeOf(time.Time{})) {
+				return []Op{EQ, NEQ, LT, LTE, GT, GTE}
+			}
+			return []Op{}
+		}
+	default:
+		return []Op{}
+	}
 }
 
 type parseState struct {

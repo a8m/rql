@@ -152,6 +152,12 @@ type Config struct {
 	GetDBOp func(Op) string
 	// Lets the user define how a rql dir ('+','-') is translated to a db direction.
 	GetDBDir func(Direction) string
+	// Sets the validator function based on the type
+	GetValidateFn func(reflect.Type) func(interface{}) error
+	// Sets the convertor function based on the type
+	GetConverter func(reflect.Type) func(interface{}) interface{}
+	// Sets the supported operations for that type
+	GetSupportedOps func(reflect.Type) []Op
 }
 
 // defaults sets the default configuration of Config.
@@ -177,6 +183,15 @@ func (c *Config) defaults() error {
 		c.GetDBDir = func(d Direction) string {
 			return sortDirection[d]
 		}
+	}
+	if c.GetConverter == nil {
+		c.GetConverter = GetConverterFn
+	}
+	if c.GetValidateFn == nil {
+		c.GetValidateFn = GetValidateFn
+	}
+	if c.GetSupportedOps == nil {
+		c.GetSupportedOps = GetSupportedOps
 	}
 	defaultString(&c.TagName, DefaultTagName)
 	defaultString(&c.OpPrefix, DefaultOpPrefix)
