@@ -17,6 +17,7 @@ import (
 //go:generate easyjson -omit_empty -disallow_unknown_fields -snake_case rql.go
 
 // Query is the decoded result of the user input.
+//
 //easyjson:json
 type Query struct {
 	// Limit must be > 0 and <= to `LimitMaxValue`.
@@ -73,7 +74,6 @@ type Query struct {
 //		return nil, err
 //	}
 //	return users, nil
-//
 type Params struct {
 	// Limit represents the number of rows returned by the SELECT statement.
 	Limit int
@@ -203,7 +203,6 @@ func (p *Parser) ParseQuery(q *Query) (pr *Params, err error) {
 //	Username => username
 //	FullName => full_name
 //	HTTPCode => http_code
-//
 func Column(s string) string {
 	var b strings.Builder
 	for i := 0; i < len(s); i++ {
@@ -236,9 +235,11 @@ func (p *Parser) init() error {
 		// no matter what the type of this field. if it has a tag,
 		// it is probably a filterable or sortable.
 		case ok:
-			if err := p.parseField(f); err != nil {
+			field, err := parseField(f, p.TagName, p.ColumnFn, p.Log, p.op)
+			if err != nil {
 				return err
 			}
+			p.fields[field.Name] = field
 		case t.Kind() == reflect.Struct:
 			for i := 0; i < t.NumField(); i++ {
 				f1 := t.Field(i)
@@ -256,14 +257,14 @@ func (p *Parser) init() error {
 
 // parseField parses the given struct field tag, and add a rule
 // in the parser according to its type and the options that were set on the tag.
-func (p *Parser) parseField(sf reflect.StructField) error {
+func parseField(sf reflect.StructField, tagName string, columnFn func(string) string, log func(string, ...interface{}), opFn func(op Op) string) (*field, error) {
 	f := &field{
-		Name:      p.ColumnFn(sf.Name),
+		Name:      columnFn(sf.Name),
 		CovertFn:  valueFn,
 		FilterOps: make(map[string]bool),
 	}
 	layout := time.RFC3339
-	opts := strings.Split(sf.Tag.Get(p.TagName), ",")
+	opts := strings.Split(sf.Tag.Get(tagName), ",")
 	for _, opt := range opts {
 		switch s := strings.TrimSpace(opt); {
 		case s == "sort":
@@ -283,12 +284,13 @@ func (p *Parser) parseField(sf reflect.StructField) error {
 			// Z for zone information.
 			v := strings.NewReplacer("_", " ", "Z", "+").Replace(layout)
 			if _, err := time.Parse(layout, v); err != nil {
-				return fmt.Errorf("rql: layout %q is not parsable: %v", layout, err)
+				return nil, fmt.Errorf("rql: layout %q is not parsable: %v", layout, err)
 			}
 		default:
-			p.Log("Ignoring unknown option %q in struct tag", opt)
+			log("Ignoring unknown option %q in struct tag", opt)
 		}
 	}
+
 	var filterOps []Op
 	switch typ := indirect(sf.Type); typ.Kind() {
 	case reflect.Bool:
@@ -329,20 +331,20 @@ func (p *Parser) parseField(sf reflect.StructField) error {
 			filterOps = append(filterOps, EQ, NEQ, LT, LTE, GT, GTE)
 		default:
 			if !v.Type().ConvertibleTo(reflect.TypeOf(time.Time{})) {
-				return fmt.Errorf("rql: field type for %q is not supported", sf.Name)
+				return nil, fmt.Errorf("rql: field type for %q is not supported", sf.Name)
 			}
 			f.ValidateFn = validateTime(layout)
 			f.CovertFn = convertTime(layout)
 			filterOps = append(filterOps, EQ, NEQ, LT, LTE, GT, GTE)
 		}
 	default:
-		return fmt.Errorf("rql: field type for %q is not supported", sf.Name)
+		return nil, fmt.Errorf("rql: field type for %q is not supported", sf.Name)
 	}
+
 	for _, op := range filterOps {
-		f.FilterOps[p.op(op)] = true
+		f.FilterOps[opFn(op)] = true
 	}
-	p.fields[f.Name] = f
-	return nil
+	return f, nil
 }
 
 type parseState struct {
