@@ -986,6 +986,65 @@ func TestParse(t *testing.T) {
 	}
 }
 
+func TestGetFields(t *testing.T) {
+	tests := []struct {
+		name    string
+		conf    Config
+		wantOut []*Field
+	}{
+		{
+			name: "get fields",
+			conf: Config{
+				Model: struct {
+					SomeName string `rql:"filter"`
+				}{},
+			},
+			wantOut: []*Field{
+				&Field{
+					Name:       "some_name",
+					Column:     "some_name",
+					Sortable:   false,
+					Filterable: true,
+					// AvailableOps: []string{"$eq", "$neq", "$lt", "$lte", "$gt", "$gte", "$like"},
+				},
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			p, err := NewParser(tt.conf)
+			if err != nil {
+				t.Fatalf("failed to build parser: %v", err)
+			}
+			out := p.GetFields()
+			assertFieldsEqual(t, out, tt.wantOut)
+		})
+	}
+}
+
+func assertFieldsEqual(t *testing.T, got []*Field, want []*Field) {
+
+	if len(got) != len(want) {
+		t.Fatalf("got %v, wanted %v", got, want)
+	}
+	for i := 0; i < len(got); i++ {
+		if got[i].Column != want[i].Column {
+			t.Fatalf("column got:%v want: %v", got[i].Column, want[i].Column)
+		}
+		if got[i].Filterable != want[i].Filterable {
+			t.Fatalf("Filterable got:%v want: %v", got[i].Filterable, want[i].Filterable)
+		}
+		if got[i].Sortable != want[i].Sortable {
+			t.Fatalf("Sortable got:%v want: %v", got[i].Sortable, want[i].Sortable)
+		}
+		if got[i].Name != want[i].Name {
+			t.Fatalf("Name got:%v want: %v", got[i].Name, want[i].Name)
+		}
+		// TODO: finish
+	}
+
+}
+
 // AssertQueryEqual tests if two query input are equal.
 // TODO: improve this in the future.
 func assertParams(t *testing.T, got *Params, want *Params) {
