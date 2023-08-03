@@ -17,6 +17,7 @@ import (
 //go:generate easyjson -omit_empty -disallow_unknown_fields -snake_case rql.go
 
 // Query is the decoded result of the user input.
+//
 //easyjson:json
 type Query struct {
 	// Limit must be > 0 and <= to `LimitMaxValue`.
@@ -73,7 +74,6 @@ type Query struct {
 //		return nil, err
 //	}
 //	return users, nil
-//
 type Params struct {
 	// Limit represents the number of rows returned by the SELECT statement.
 	Limit int
@@ -203,7 +203,6 @@ func (p *Parser) ParseQuery(q *Query) (pr *Params, err error) {
 //	Username => username
 //	FullName => full_name
 //	HTTPCode => http_code
-//
 func Column(s string) string {
 	var b strings.Builder
 	for i := 0; i < len(s); i++ {
@@ -375,12 +374,15 @@ func (p *Parser) sort(fields []string) string {
 	sortParams := make([]string, len(fields))
 	for i, field := range fields {
 		expect(field != "", "sort field can not be empty")
+
 		var orderBy string
 		// if the sort field prefixed by an order indicator.
-		if order, ok := sortDirection[field[0]]; ok {
-			orderBy = order
+		f0 := field[0]
+		if f0 == byte(ASC) || f0 == byte(DESC) {
+			orderBy = p.GetDBDir(Direction(f0))
 			field = field[1:]
 		}
+
 		expect(p.fields[field] != nil, "unrecognized key %q for sorting", field)
 		expect(p.fields[field].Sortable, "field %q is not sortable", field)
 		colName := p.colName(field)
@@ -425,7 +427,7 @@ func (p *parseState) relOp(op Op, terms []interface{}) {
 	for _, t := range terms {
 		if i > 0 {
 			p.WriteByte(' ')
-			p.WriteString(op.SQL())
+			p.WriteString(p.GetDBOp(op))
 			p.WriteByte(' ')
 		}
 		mt, ok := t.(map[string]interface{})
@@ -469,7 +471,7 @@ func (p *parseState) field(f *field, v interface{}) {
 // for example: "name = ?", or "age >= ?".
 func (p *Parser) fmtOp(field string, op Op) string {
 	colName := p.colName(field)
-	return colName + " " + op.SQL() + " ?"
+	return colName + " " + p.GetDBOp(op) + " ?"
 }
 
 // colName formats the query field to database column name in cases the user configured a custom

@@ -8,14 +8,12 @@ import (
 
 // Op is a filter operator used by rql.
 type Op string
-
-// SQL returns the SQL representation of the operator.
-func (o Op) SQL() string {
-	return opFormat[o]
-}
+type Direction byte
 
 // Operators that support by rql.
 const (
+	ASC  = Direction('+')
+	DESC = Direction('-')
 	EQ   = Op("eq")   // =
 	NEQ  = Op("neq")  // <>
 	LT   = Op("lt")   // <
@@ -38,14 +36,28 @@ const (
 	Limit           = "limit"
 )
 
+func GetOps() []Op {
+	return []Op{
+		EQ,
+		NEQ,
+		LT,
+		GT,
+		LTE,
+		GTE,
+		LIKE,
+		OR,
+		AND,
+	}
+}
+
 var (
 
 	// A sorting expression can be optionally prefixed with + or - to control the
 	// sorting direction, ascending or descending. For example, '+field' or '-field'.
 	// If the predicate is missing or empty then it defaults to '+'
-	sortDirection = map[byte]string{
-		'+': "asc",
-		'-': "desc",
+	sortDirection = map[Direction]string{
+		ASC:  "asc",
+		DESC: "desc",
 	}
 	opFormat = map[Op]string{
 		EQ:   "=",
@@ -136,6 +148,10 @@ type Config struct {
 	// DefaultSort is the default value for the 'Sort' field that returns when no sort expression is supplied by the caller.
 	// It defaults to an empty string slice.
 	DefaultSort []string
+	// Lets the user define how a rql op is translated to a db op.
+	GetDBOp func(Op) string
+	// Lets the user define how a rql dir ('+','-') is translated to a db direction.
+	GetDBDir func(Direction) string
 }
 
 // defaults sets the default configuration of Config.
@@ -151,6 +167,16 @@ func (c *Config) defaults() error {
 	}
 	if c.ColumnFn == nil {
 		c.ColumnFn = Column
+	}
+	if c.GetDBOp == nil {
+		c.GetDBOp = func(o Op) string {
+			return opFormat[o]
+		}
+	}
+	if c.GetDBDir == nil {
+		c.GetDBDir = func(d Direction) string {
+			return sortDirection[d]
+		}
 	}
 	defaultString(&c.TagName, DefaultTagName)
 	defaultString(&c.OpPrefix, DefaultOpPrefix)
