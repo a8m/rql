@@ -291,7 +291,7 @@ func (p *Parser) parseField(sf reflect.StructField) error {
 	t := indirect(sf.Type)
 
 	filterOps := GetSupportedOps(t)
-	if len(f.FilterOps) == 0 {
+	if len(filterOps) == 0 {
 		return fmt.Errorf("rql: field type for %q is not supported", sf.Name)
 	}
 	f.CovertFn = GetConverterFn(t)
