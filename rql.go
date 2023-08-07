@@ -17,6 +17,7 @@ import (
 //go:generate easyjson -omit_empty -disallow_unknown_fields -snake_case rql.go
 
 // Query is the decoded result of the user input.
+//
 //easyjson:json
 type Query struct {
 	// Limit must be > 0 and <= to `LimitMaxValue`.
@@ -73,7 +74,6 @@ type Query struct {
 //		return nil, err
 //	}
 //	return users, nil
-//
 type Params struct {
 	// Limit represents the number of rows returned by the SELECT statement.
 	Limit int
@@ -106,8 +106,10 @@ func (p ParseError) Error() string {
 
 // field is a configuration of a struct field.
 type field struct {
-	// Name of the column.
+	// Name of the field.
 	Name string
+	// name of the column.
+	Column string
 	// Has a "sort" option in the tag.
 	Sortable bool
 	// Has a "filter" option in the tag.
@@ -203,7 +205,6 @@ func (p *Parser) ParseQuery(q *Query) (pr *Params, err error) {
 //	Username => username
 //	FullName => full_name
 //	HTTPCode => http_code
-//
 func Column(s string) string {
 	var b strings.Builder
 	for i := 0; i < len(s); i++ {
@@ -258,7 +259,7 @@ func (p *Parser) init() error {
 // in the parser according to its type and the options that were set on the tag.
 func (p *Parser) parseField(sf reflect.StructField) error {
 	f := &field{
-		Name:      p.ColumnFn(sf.Name),
+		Column:    p.ColumnFn(sf.Name),
 		CovertFn:  valueFn,
 		FilterOps: make(map[string]bool),
 	}
@@ -271,7 +272,9 @@ func (p *Parser) parseField(sf reflect.StructField) error {
 		case s == "filter":
 			f.Filterable = true
 		case strings.HasPrefix(opt, "column"):
-			f.Name = strings.TrimPrefix(opt, "column=")
+			f.Column = strings.TrimPrefix(opt, "column=")
+		case strings.HasPrefix(opt, "name"):
+			f.Name = strings.TrimPrefix(opt, "name=")
 		case strings.HasPrefix(opt, "layout"):
 			layout = strings.TrimPrefix(opt, "layout=")
 			// if it's one of the standard layouts, like: RFC822 or Kitchen.
@@ -289,6 +292,16 @@ func (p *Parser) parseField(sf reflect.StructField) error {
 			p.Log("Ignoring unknown option %q in struct tag", opt)
 		}
 	}
+
+	// backwards compatible
+	if f.Name == "" {
+		if p.NameFn != nil {
+			f.Name = p.NameFn(sf.Name)
+		} else {
+			f.Name = f.Column
+		}
+	}
+
 	var filterOps []Op
 	switch typ := indirect(sf.Type); typ.Kind() {
 	case reflect.Bool:
@@ -408,8 +421,9 @@ func (p *parseState) and(f map[string]interface{}) {
 			expect(ok, "$and must be type array")
 			p.relOp(AND, terms)
 		case p.fields[k] != nil:
-			expect(p.fields[k].Filterable, "field %q is not filterable", k)
-			p.field(p.fields[k], v)
+			f := p.fields[k]
+			expect(f.Filterable, "field %q is not filterable", k)
+			p.field(f, v)
 		default:
 			expect(false, "unrecognized key %q for filtering", k)
 		}
@@ -443,7 +457,7 @@ func (p *parseState) field(f *field, v interface{}) {
 	// default equality check.
 	if !ok {
 		must(f.ValidateFn(v), "invalid datatype for field %q", f.Name)
-		p.WriteString(p.fmtOp(f.Name, EQ))
+		p.WriteString(p.fmtOp(f.Column, EQ))
 		p.values = append(p.values, f.CovertFn(v))
 	}
 	var i int
@@ -456,7 +470,7 @@ func (p *parseState) field(f *field, v interface{}) {
 		}
 		expect(f.FilterOps[opName], "can not apply op %q on field %q", opName, f.Name)
 		must(f.ValidateFn(opVal), "invalid datatype or format for field %q", f.Name)
-		p.WriteString(p.fmtOp(f.Name, Op(opName[1:])))
+		p.WriteString(p.fmtOp(f.Column, Op(opName[1:])))
 		p.values = append(p.values, f.CovertFn(opVal))
 		i++
 	}

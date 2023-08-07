@@ -912,6 +912,63 @@ func TestParse(t *testing.T) {
 			}`),
 			wantErr: true,
 		},
+		{
+			name: "support name struct opt",
+			conf: Config{
+				Model: struct {
+					SomeName string `rql:"filter,name=someName"`
+				}{},
+			},
+			input: []byte(`{
+				"filter": {
+					"someName": {
+						"$eq": "someName"
+					}
+				}
+			}`),
+			wantOut: &Params{
+				Limit:      25,
+				FilterExp:  "some_name = ?",
+				FilterArgs: []interface{}{"someName"},
+			},
+		},
+		{
+			name: "backwards compatibility to error with mismatching keys and no namefn",
+			conf: Config{
+				Model: struct {
+					SomeName string `rql:"filter"`
+				}{},
+			},
+			input: []byte(`{
+				"filter": {
+					"someName": {
+						"$eq": "someName"
+					}
+				}
+			}`),
+			wantErr: true,
+		},
+		{
+			name: "test nameFn works",
+			conf: Config{
+				Model: struct {
+					SomeName string `rql:"filter"`
+				}{},
+				NameFn: Column,
+			},
+			input: []byte(`{
+				"filter": {
+					"someName": {
+						"$eq": "someName"
+					}
+				}
+			}`),
+			wantOut: &Params{
+				Limit:      25,
+				FilterExp:  "some_name = ?",
+				FilterArgs: []interface{}{"someName"},
+			},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
