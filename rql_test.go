@@ -912,6 +912,47 @@ func TestParse(t *testing.T) {
 			}`),
 			wantErr: true,
 		},
+		{
+			name: "custom db symbols",
+			conf: Config{
+				Model: struct {
+					ID           string `rql:"filter"`
+					FullName     string `rql:"filter"`
+					HTTPUrl      string `rql:"filter"`
+					NestedStruct struct {
+						UUID string `rql:"filter"`
+					}
+				}{},
+				FieldSep: ".",
+				GetDBOp: func(o Op) string {
+					if o == EQ {
+						return "eq"
+					}
+					return opFormat[o]
+
+				},
+				GetDBDir: func(d Direction) string {
+					if d == ASC {
+						return "ASC"
+					}
+					return "DESC"
+				},
+			},
+			input: []byte(`{
+				"filter": {
+					"id": "id",
+					"full_name": "full_name",
+					"http_url": "http_url",
+					"nested_struct.uuid": "uuid"
+				}
+			}`),
+			wantOut: &Params{
+				Limit:      25,
+				FilterExp:  "id eq ? AND full_name eq ? AND http_url eq ? AND nested_struct_uuid eq ?",
+				FilterArgs: []interface{}{"id", "full_name", "http_url", "uuid"},
+				Sort:       "",
+			},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
