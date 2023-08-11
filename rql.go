@@ -105,7 +105,7 @@ func (p ParseError) Error() string {
 }
 
 // field is a configuration of a struct field.
-type Field struct {
+type FieldMeta struct {
 	// Name of the column.
 	Name string
 	// Has a "sort" option in the tag.
@@ -114,6 +114,9 @@ type Field struct {
 	Filterable bool
 	// All supported operators for this field.
 	FilterOps map[string]bool
+}
+type Field struct {
+	*FieldMeta
 	// Validation for the type. for example, unit8 greater than or equal to 0.
 	ValidateFn func(interface{}) error
 	// ConvertFn converts the given value to the type value.
@@ -282,9 +285,11 @@ func (p *Parser) init() error {
 // in the parser according to its type and the options that were set on the tag.
 func (p *Parser) parseField(sf reflect.StructField) error {
 	f := &Field{
-		Name:      p.ColumnFn(sf.Name),
-		CovertFn:  valueFn,
-		FilterOps: make(map[string]bool),
+		FieldMeta: &FieldMeta{
+			Name:      p.ColumnFn(sf.Name),
+			FilterOps: make(map[string]bool),
+		},
+		CovertFn: valueFn,
 	}
 	layout := time.RFC3339
 	opts := strings.Split(sf.Tag.Get(p.TagName), ",")
