@@ -149,13 +149,13 @@ type Config struct {
 	// It defaults to an empty string slice.
 	DefaultSort []string
 	// Lets the user define how a rql op is translated to a db op.
-	GetDBOp func(Op) string
+	GetDBOp func(Op, *Field) string
 	// Lets the user define how a rql dir ('+','-') is translated to a db direction.
 	GetDBDir func(Direction) string
 	// Sets the validator function based on the type
-	GetValidateFn func(reflect.Type) func(interface{}) error
+	GetValidator func(reflect.Type) Validator
 	// Sets the convertor function based on the type
-	GetConverter func(reflect.Type) func(interface{}) interface{}
+	GetConverter func(reflect.Type) Converter
 	// Sets the supported operations for that type
 	GetSupportedOps func(reflect.Type) []Op
 }
@@ -175,7 +175,7 @@ func (c *Config) defaults() error {
 		c.ColumnFn = Column
 	}
 	if c.GetDBOp == nil {
-		c.GetDBOp = func(o Op) string {
+		c.GetDBOp = func(o Op, _ *Field) string {
 			return opFormat[o]
 		}
 	}
@@ -187,8 +187,8 @@ func (c *Config) defaults() error {
 	if c.GetConverter == nil {
 		c.GetConverter = GetConverterFn
 	}
-	if c.GetValidateFn == nil {
-		c.GetValidateFn = GetValidateFn
+	if c.GetValidator == nil {
+		c.GetValidator = GetValidateFn
 	}
 	if c.GetSupportedOps == nil {
 		c.GetSupportedOps = GetSupportedOps

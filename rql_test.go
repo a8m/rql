@@ -2,7 +2,9 @@ package rql
 
 import (
 	"database/sql"
+	"fmt"
 	"reflect"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -924,7 +926,7 @@ func TestParse(t *testing.T) {
 					}
 				}{},
 				FieldSep: ".",
-				GetDBOp: func(o Op) string {
+				GetDBOp: func(o Op, _ *Field) string {
 					if o == EQ {
 						return "eq"
 					}
@@ -991,8 +993,9 @@ func assertParams(t *testing.T, got *Params, want *Params) {
 	if !equalExp(got.FilterExp, want.FilterExp) || !equalExp(want.FilterExp, got.FilterExp) {
 		t.Fatalf("filter expr:\n\tgot: %q\n\twant %q", got.FilterExp, want.FilterExp)
 	}
-	if !equalArgs(got.FilterArgs, got.FilterArgs) || !equalArgs(want.FilterArgs, got.FilterArgs) {
-		t.Fatalf("filter args:\n\tgot: %v\n\twant %v", got.FilterArgs, want.FilterArgs)
+	err := deepEqualIgnoreOrder(got.FilterArgs, want.FilterArgs)
+	if err != nil {
+		t.Fatalf("filter args:\n\tgot: %v\n\twant %v %v", got.FilterArgs, want.FilterArgs, err.Error())
 	}
 }
 
@@ -1061,4 +1064,33 @@ func split(e string) []string {
 func mustParseTime(layout, s string) time.Time {
 	t, _ := time.Parse(layout, s)
 	return t
+}
+
+func deepSort(i interface{}) interface{} {
+	switch reflect.TypeOf(i).Kind() {
+	case reflect.Slice:
+		s := reflect.ValueOf(i)
+		if s.Len() == 0 {
+			return i
+		}
+		newSlice := make([]interface{}, s.Len())
+		for j := 0; j < s.Len(); j++ {
+			newSlice[j] = deepSort(s.Index(j).Interface())
+		}
+		sort.SliceStable(newSlice, func(i, j int) bool {
+			return fmt.Sprint(newSlice[i]) < fmt.Sprint(newSlice[j])
+		})
+		return newSlice
+	default:
+		return i
+	}
+}
+
+func deepEqualIgnoreOrder(a, b interface{}) error {
+	sortedA := deepSort(a)
+	sortedB := deepSort(b)
+	if !reflect.DeepEqual(sortedA, sortedB) {
+		return fmt.Errorf("differences found: A=%v, B=%v", sortedA, sortedB)
+	}
+	return nil
 }

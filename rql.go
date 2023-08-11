@@ -104,11 +104,11 @@ func (p ParseError) Error() string {
 	return p.msg
 }
 
-type Validator func(interface{}) error
-type Converter func(interface{}) interface{}
+type Validator func(Op, reflect.Type, interface{}) error
+type Converter func(Op, reflect.Type, interface{}) interface{}
 
 // field is a configuration of a struct field.
-type field struct {
+type Field struct {
 	// Name of the column.
 	Name string
 	// Has a "sort" option in the tag.
@@ -121,13 +121,15 @@ type field struct {
 	ValidateFn Validator
 	// ConvertFn converts the given value to the type value.
 	CovertFn Converter
+	// Type of the field
+	Type reflect.Type
 }
 
 // A Parser parses various types. The result from the Parse method is a Param object.
 // It is safe for concurrent use by multiple goroutines except for configuration changes.
 type Parser struct {
 	Config
-	fields map[string]*field
+	fields map[string]*Field
 }
 
 // NewParser creates a new Parser. it fails if the configuration is invalid.
@@ -137,7 +139,7 @@ func NewParser(c Config) (*Parser, error) {
 	}
 	p := &Parser{
 		Config: c,
-		fields: make(map[string]*field),
+		fields: make(map[string]*Field),
 	}
 	if err := p.init(); err != nil {
 		return nil, err
@@ -224,6 +226,7 @@ func Column(s string) string {
 }
 
 func GetSupportedOps(t reflect.Type) []Op {
+	println(t.Kind().String())
 	switch t.Kind() {
 	case reflect.Bool:
 		return []Op{EQ, NEQ}
@@ -258,7 +261,7 @@ func GetSupportedOps(t reflect.Type) []Op {
 	}
 }
 
-func GetConverterFn(t reflect.Type) func(interface{}) interface{} {
+func GetConverterFn(t reflect.Type) Converter {
 	layout := ""
 	switch t.Kind() {
 	case reflect.Bool:
@@ -331,7 +334,8 @@ func GetValidateFn(t reflect.Type) Validator {
 // init initializes the parser parsing state. it scans the fields
 // in a breath-first-search order and for each one of the field calls parseField.
 func (p *Parser) init() error {
-	t := indirect(reflect.TypeOf(p.Model))
+	t := reflect.TypeOf(p.Model)
+	t = indirect(t)
 	l := list.New()
 	for i := 0; i < t.NumField(); i++ {
 		l.PushFront(t.Field(i))
@@ -364,7 +368,7 @@ func (p *Parser) init() error {
 // parseField parses the given struct field tag, and add a rule
 // in the parser according to its type and the options that were set on the tag.
 func (p *Parser) parseField(sf reflect.StructField) error {
-	f := &field{
+	f := &Field{
 		Name:      p.ColumnFn(sf.Name),
 		CovertFn:  valueFn,
 		FilterOps: make(map[string]bool),
@@ -396,14 +400,16 @@ func (p *Parser) parseField(sf reflect.StructField) error {
 			p.Log("Ignoring unknown option %q in struct tag", opt)
 		}
 	}
-	t := indirect(sf.Type)
 
-	filterOps := GetSupportedOps(t)
+	// t := indirect(sf.Type)
+	t := sf.Type
+	f.Type = t
+	filterOps := p.Config.GetSupportedOps(f.Type)
 	if len(filterOps) == 0 {
 		return fmt.Errorf("rql: field type for %q is not supported", sf.Name)
 	}
-	f.CovertFn = GetConverterFn(t)
-	f.ValidateFn = GetValidateFn(t)
+	f.CovertFn = p.Config.GetConverter(f.Type)
+	f.ValidateFn = p.Config.GetValidator(f.Type)
 
 	for _, op := range filterOps {
 		f.FilterOps[p.op(op)] = true
@@ -477,8 +483,9 @@ func (p *parseState) and(f map[string]interface{}) {
 			expect(ok, "$and must be type array")
 			p.relOp(AND, terms)
 		case p.fields[k] != nil:
-			expect(p.fields[k].Filterable, "field %q is not filterable", k)
-			p.field(p.fields[k], v)
+			f := p.fields[k]
+			expect(f.Filterable, "field %q is not filterable", k)
+			p.field(f, v)
 		default:
 			expect(false, "unrecognized key %q for filtering", k)
 		}
@@ -494,7 +501,7 @@ func (p *parseState) relOp(op Op, terms []interface{}) {
 	for _, t := range terms {
 		if i > 0 {
 			p.WriteByte(' ')
-			p.WriteString(p.GetDBOp(op))
+			p.WriteString(p.GetDBOp(op, nil))
 			p.WriteByte(' ')
 		}
 		mt, ok := t.(map[string]interface{})
@@ -507,13 +514,16 @@ func (p *parseState) relOp(op Op, terms []interface{}) {
 	}
 }
 
-func (p *parseState) field(f *field, v interface{}) {
+func (p *parseState) field(f *Field, v interface{}) {
 	terms, ok := v.(map[string]interface{})
 	// default equality check.
 	if !ok {
-		must(f.ValidateFn(v), "invalid datatype for field %q", f.Name)
-		p.WriteString(p.fmtOp(f.Name, EQ))
-		p.values = append(p.values, f.CovertFn(v))
+		op := EQ
+		err := f.ValidateFn(op, f.Type, v)
+		must(err, "invalid datatype for field %q", f.Name)
+		p.WriteString(p.fmtOp(f, op))
+		arg := f.CovertFn(op, f.Type, v)
+		p.values = append(p.values, arg)
 	}
 	var i int
 	if len(terms) > 1 {
@@ -523,10 +533,12 @@ func (p *parseState) field(f *field, v interface{}) {
 		if i > 0 {
 			p.WriteString(" AND ")
 		}
+		op := Op(opName[1:])
 		expect(f.FilterOps[opName], "can not apply op %q on field %q", opName, f.Name)
-		must(f.ValidateFn(opVal), "invalid datatype or format for field %q", f.Name)
-		p.WriteString(p.fmtOp(f.Name, Op(opName[1:])))
-		p.values = append(p.values, f.CovertFn(opVal))
+		must(f.ValidateFn(op, f.Type, opVal), "invalid datatype or format for field %q", f.Name)
+		p.WriteString(p.fmtOp(f, op))
+		arg := f.CovertFn(op, f.Type, opVal)
+		p.values = append(p.values, arg)
 		i++
 	}
 	if len(terms) > 1 {
@@ -536,9 +548,8 @@ func (p *parseState) field(f *field, v interface{}) {
 
 // fmtOp create a string for the operation with a placeholder.
 // for example: "name = ?", or "age >= ?".
-func (p *Parser) fmtOp(field string, op Op) string {
-	colName := p.colName(field)
-	return colName + " " + p.GetDBOp(op) + " ?"
+func (p *Parser) fmtOp(f *Field, op Op) string {
+	return f.Name + " " + p.GetDBOp(op, f) + " ?"
 }
 
 // colName formats the query field to database column name in cases the user configured a custom
@@ -589,7 +600,7 @@ func errorType(v interface{}, expected string) error {
 }
 
 // validate that the underlined element of given interface is a boolean.
-func validateBool(v interface{}) error {
+func validateBool(op Op, t reflect.Type, v interface{}) error {
 	if _, ok := v.(bool); !ok {
 		return errorType(v, "bool")
 	}
@@ -597,7 +608,7 @@ func validateBool(v interface{}) error {
 }
 
 // validate that the underlined element of given interface is a string.
-func validateString(v interface{}) error {
+func validateString(op Op, t reflect.Type, v interface{}) error {
 	if _, ok := v.(string); !ok {
 		return errorType(v, "string")
 	}
@@ -605,7 +616,7 @@ func validateString(v interface{}) error {
 }
 
 // validate that the underlined element of given interface is a float.
-func validateFloat(v interface{}) error {
+func validateFloat(op Op, t reflect.Type, v interface{}) error {
 	if _, ok := v.(float64); !ok {
 		return errorType(v, "float64")
 	}
@@ -613,7 +624,7 @@ func validateFloat(v interface{}) error {
 }
 
 // validate that the underlined element of given interface is an int.
-func validateInt(v interface{}) error {
+func validateInt(op Op, t reflect.Type, v interface{}) error {
 	n, ok := v.(float64)
 	if !ok {
 		return errorType(v, "int")
@@ -625,8 +636,8 @@ func validateInt(v interface{}) error {
 }
 
 // validate that the underlined element of given interface is an int and greater than 0.
-func validateUInt(v interface{}) error {
-	if err := validateInt(v); err != nil {
+func validateUInt(op Op, t reflect.Type, v interface{}) error {
+	if err := validateInt(op, t, v); err != nil {
 		return err
 	}
 	if v.(float64) < 0 {
@@ -637,7 +648,7 @@ func validateUInt(v interface{}) error {
 
 // validate that the underlined element of this interface is a "datetime" string.
 func validateTime(layout string) Validator {
-	return func(v interface{}) error {
+	return func(_ Op, _ reflect.Type, v interface{}) error {
 		s, ok := v.(string)
 		if !ok {
 			return errorType(v, "string")
@@ -648,20 +659,20 @@ func validateTime(layout string) Validator {
 }
 
 // convert float to int.
-func convertInt(v interface{}) interface{} {
+func convertInt(op Op, t reflect.Type, v interface{}) interface{} {
 	return int(v.(float64))
 }
 
 // convert string to time object.
-func convertTime(layout string) func(interface{}) interface{} {
-	return func(v interface{}) interface{} {
+func convertTime(layout string) func(Op, reflect.Type, interface{}) interface{} {
+	return func(_ Op, _ reflect.Type, v interface{}) interface{} {
 		t, _ := time.Parse(layout, v.(string))
 		return t
 	}
 }
 
 // nop converter.
-func valueFn(v interface{}) interface{} {
+func valueFn(op Op, t reflect.Type, v interface{}) interface{} {
 	return v
 }
 
