@@ -108,7 +108,7 @@ var (
 	EXISTS   = Op("exists")
 )
 
-func CustomGetSupportedOps(f *Field) []Op {
+func CustomGetSupportedOps(f *FieldMeta) []Op {
 	t := f.Type
 	switch t.Kind() {
 	case reflect.Bool:
@@ -148,8 +148,8 @@ func CustomGetSupportedOps(f *Field) []Op {
 	}
 }
 
-func CustomGetConverterFn(f *Field) Converter {
-	layout := ""
+func CustomGetConverterFn(f *FieldMeta) Converter {
+	layout := f.Layout
 	t := f.Type
 	switch t.Kind() {
 	case reflect.Bool:
@@ -187,9 +187,9 @@ func CustomGetConverterFn(f *Field) Converter {
 	return valueFn
 }
 
-func CustomGetValidateFn(f *Field) Validator {
+func CustomGetValidateFn(f *FieldMeta) Validator {
 	t := f.Type
-	layout := ""
+	layout := f.Layout
 	switch t.Kind() {
 	case reflect.Bool:
 		return validateBool
@@ -246,7 +246,7 @@ func validateSliceElem(v interface{}, expectedElemType reflect.Type) error {
 }
 
 // validate that the underlined element of given interface is a string.
-func customValidateString(op Op, t reflect.Type, v interface{}) error {
+func customValidateString(op Op, f FieldMeta, v interface{}) error {
 	if op == IN || op == NIN {
 		validateSliceElem(v, reflect.TypeOf(""))
 	}
@@ -257,7 +257,7 @@ func customValidateString(op Op, t reflect.Type, v interface{}) error {
 }
 
 // validate that the underlined element of given interface is a float.
-func customValidateFloat(op Op, t reflect.Type, v interface{}) error {
+func customValidateFloat(op Op, f FieldMeta, v interface{}) error {
 	if op == IN || op == NIN {
 		return validateSliceElem(v, reflect.TypeOf(1.1))
 	}
@@ -268,7 +268,7 @@ func customValidateFloat(op Op, t reflect.Type, v interface{}) error {
 }
 
 // validate that the underlined element of given interface is an int.
-func customValidateInt(op Op, t reflect.Type, v interface{}) error {
+func customValidateInt(op Op, f FieldMeta, v interface{}) error {
 	if op == IN || op == NIN {
 		return validateSliceElem(v, reflect.TypeOf(1.1))
 	}
@@ -283,11 +283,11 @@ func customValidateInt(op Op, t reflect.Type, v interface{}) error {
 }
 
 // validate that the underlined element of given interface is an int and greater than 0.
-func customValidateUInt(op Op, t reflect.Type, v interface{}) error {
+func customValidateUInt(op Op, f FieldMeta, v interface{}) error {
 	if op == IN || op == NIN {
 		return validateSliceElem(v, reflect.TypeOf(1.1))
 	}
-	if err := validateInt(op, t, v); err != nil {
+	if err := validateInt(op, f, v); err != nil {
 		return err
 	}
 	if v.(float64) < 0 {
@@ -297,7 +297,7 @@ func customValidateUInt(op Op, t reflect.Type, v interface{}) error {
 }
 
 // convert float to int.
-func customConvertInt(op Op, t reflect.Type, v interface{}) interface{} {
+func customConvertInt(op Op, f FieldMeta, v interface{}) interface{} {
 	if op == IN || op == NIN {
 		sl, ok := v.([]interface{})
 		if !ok {
@@ -312,7 +312,8 @@ func customConvertInt(op Op, t reflect.Type, v interface{}) interface{} {
 	return int(v.(float64))
 }
 
-func convertSlice(op Op, t reflect.Type, v interface{}) interface{} {
+func convertSlice(op Op, f FieldMeta, v interface{}) interface{} {
+	t := f.Type
 	if isNumeric(t.Elem()) {
 		switch t.Elem().Kind() {
 		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
@@ -349,7 +350,8 @@ func isComparable(t reflect.Type, t2 reflect.Type) bool {
 	return t == t2 || (isNumeric(t) && isNumeric(t2))
 }
 
-func validateSliceOp(op Op, t reflect.Type, v interface{}) error {
+func validateSliceOp(op Op, f FieldMeta, v interface{}) error {
+	t := f.Type
 	if t.Kind() != reflect.Slice {
 		return fmt.Errorf("t is not a slice, wrong validate func")
 	}
@@ -361,7 +363,7 @@ func validateSliceOp(op Op, t reflect.Type, v interface{}) error {
 	return validateSliceElem(v, t.Elem())
 }
 
-func validateMapOp(op Op, t reflect.Type, v interface{}) error {
+func validateMapOp(op Op, f FieldMeta, v interface{}) error {
 	if op == EXISTS {
 		_, ok := v.(string)
 		if !ok {
