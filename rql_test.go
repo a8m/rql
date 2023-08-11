@@ -1063,22 +1063,40 @@ func split(e string) []string {
 
 func mustParseTime(layout, s string) time.Time {
 	t, _ := time.Parse(layout, s)
+
 	return t
 }
 
+func compareInterface(a, b interface{}) bool {
+	// If either of the values is nil, handle them first.
+	if a == nil && b != nil {
+		return true // consider nil as the smallest value
+	}
+	if a != nil && b == nil {
+		return false
+	}
+	if a == nil && b == nil {
+		return false // doesn't matter which one comes first if both are nil
+	}
+
+	// If they are slices, compare their sorted string representations.
+	if reflect.TypeOf(a).Kind() == reflect.Slice && reflect.TypeOf(b).Kind() == reflect.Slice {
+		return fmt.Sprint(a) < fmt.Sprint(b)
+	}
+
+	// Otherwise, use the regular string representation for comparison.
+	return fmt.Sprint(a) < fmt.Sprint(b)
+}
+
 func deepSort(i interface{}) interface{} {
-	switch reflect.TypeOf(i).Kind() {
-	case reflect.Slice:
-		s := reflect.ValueOf(i)
-		if s.Len() == 0 {
-			return i
-		}
-		newSlice := make([]interface{}, s.Len())
-		for j := 0; j < s.Len(); j++ {
-			newSlice[j] = deepSort(s.Index(j).Interface())
+	switch v := i.(type) {
+	case []interface{}:
+		newSlice := make([]interface{}, len(v))
+		for j, item := range v {
+			newSlice[j] = deepSort(item)
 		}
 		sort.SliceStable(newSlice, func(i, j int) bool {
-			return fmt.Sprint(newSlice[i]) < fmt.Sprint(newSlice[j])
+			return compareInterface(newSlice[i], newSlice[j])
 		})
 		return newSlice
 	default:
@@ -1087,6 +1105,11 @@ func deepSort(i interface{}) interface{} {
 }
 
 func deepEqualIgnoreOrder(a, b interface{}) error {
+	// Explicitly handle nil cases
+	if (a == nil && b != nil) || (a != nil && b == nil) {
+		return fmt.Errorf("differences found: A=%v, B=%v", a, b)
+	}
+
 	sortedA := deepSort(a)
 	sortedB := deepSort(b)
 	if !reflect.DeepEqual(sortedA, sortedB) {

@@ -153,11 +153,11 @@ type Config struct {
 	// Lets the user define how a rql dir ('+','-') is translated to a db direction.
 	GetDBDir func(Direction) string
 	// Sets the validator function based on the type
-	GetValidator func(reflect.Type) Validator
+	GetValidator func(f *Field) Validator
 	// Sets the convertor function based on the type
-	GetConverter func(reflect.Type) Converter
+	GetConverter func(f *Field) Converter
 	// Sets the supported operations for that type
-	GetSupportedOps func(reflect.Type) []Op
+	GetSupportedOps func(f *Field) []Op
 }
 
 // defaults sets the default configuration of Config.

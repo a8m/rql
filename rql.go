@@ -123,6 +123,8 @@ type Field struct {
 	CovertFn Converter
 	// Type of the field
 	Type reflect.Type
+	// Time Layout
+	Layout string
 }
 
 // A Parser parses various types. The result from the Parse method is a Param object.
@@ -225,8 +227,8 @@ func Column(s string) string {
 	return b.String()
 }
 
-func GetSupportedOps(t reflect.Type) []Op {
-	println(t.Kind().String())
+func GetSupportedOps(f *Field) []Op {
+	t := f.Type
 	switch t.Kind() {
 	case reflect.Bool:
 		return []Op{EQ, NEQ}
@@ -261,8 +263,9 @@ func GetSupportedOps(t reflect.Type) []Op {
 	}
 }
 
-func GetConverterFn(t reflect.Type) Converter {
-	layout := ""
+func GetConverterFn(f *Field) Converter {
+	layout := f.Layout
+	t := f.Type
 	switch t.Kind() {
 	case reflect.Bool:
 		return valueFn
@@ -295,8 +298,9 @@ func GetConverterFn(t reflect.Type) Converter {
 	return valueFn
 }
 
-func GetValidateFn(t reflect.Type) Validator {
-	layout := ""
+func GetValidateFn(f *Field) Validator {
+	t := f.Type
+	layout := f.Layout
 	switch t.Kind() {
 	case reflect.Bool:
 		return validateBool
@@ -400,16 +404,15 @@ func (p *Parser) parseField(sf reflect.StructField) error {
 			p.Log("Ignoring unknown option %q in struct tag", opt)
 		}
 	}
+	f.Layout = layout
 
-	// t := indirect(sf.Type)
-	t := sf.Type
-	f.Type = t
-	filterOps := p.Config.GetSupportedOps(f.Type)
+	f.Type = indirect(sf.Type)
+	filterOps := p.Config.GetSupportedOps(f)
 	if len(filterOps) == 0 {
 		return fmt.Errorf("rql: field type for %q is not supported", sf.Name)
 	}
-	f.CovertFn = p.Config.GetConverter(f.Type)
-	f.ValidateFn = p.Config.GetValidator(f.Type)
+	f.CovertFn = p.Config.GetConverter(f)
+	f.ValidateFn = p.Config.GetValidator(f)
 
 	for _, op := range filterOps {
 		f.FilterOps[p.op(op)] = true

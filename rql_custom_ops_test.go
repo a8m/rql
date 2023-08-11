@@ -108,8 +108,8 @@ var (
 	EXISTS   = Op("exists")
 )
 
-func CustomGetSupportedOps(t reflect.Type) []Op {
-	t = indirect(t)
+func CustomGetSupportedOps(f *Field) []Op {
+	t := f.Type
 	switch t.Kind() {
 	case reflect.Bool:
 		return []Op{EQ, NEQ}
@@ -148,8 +148,9 @@ func CustomGetSupportedOps(t reflect.Type) []Op {
 	}
 }
 
-func CustomGetConverterFn(t reflect.Type) Converter {
+func CustomGetConverterFn(f *Field) Converter {
 	layout := ""
+	t := f.Type
 	switch t.Kind() {
 	case reflect.Bool:
 		return valueFn
@@ -186,7 +187,8 @@ func CustomGetConverterFn(t reflect.Type) Converter {
 	return valueFn
 }
 
-func CustomGetValidateFn(t reflect.Type) Validator {
+func CustomGetValidateFn(f *Field) Validator {
+	t := f.Type
 	layout := ""
 	switch t.Kind() {
 	case reflect.Bool:
