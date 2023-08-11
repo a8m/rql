@@ -149,7 +149,7 @@ type Config struct {
 	// It defaults to an empty string slice.
 	DefaultSort []string
 	// Lets the user define how a rql op is translated to a db op.
-	GetDBOp func(Op, *Field) string
+	GetDBOp func(Op, *FieldMeta) string
 	// Lets the user define how a rql dir ('+','-') is translated to a db direction.
 	GetDBDir func(Direction) string
 	// Sets the validator function based on the type
@@ -175,7 +175,7 @@ func (c *Config) defaults() error {
 		c.ColumnFn = Column
 	}
 	if c.GetDBOp == nil {
-		c.GetDBOp = func(o Op, _ *Field) string {
+		c.GetDBOp = func(o Op, _ *FieldMeta) string {
 			return opFormat[o]
 		}
 	}

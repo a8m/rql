@@ -52,7 +52,7 @@ func TestParse2(t *testing.T) {
 					AliasMap StructAlias            `rql:"filter,column=alias_map"`
 				}{},
 				FieldSep: ".",
-				GetDBOp: func(o Op, f *Field) string {
+				GetDBOp: func(o Op, f *FieldMeta) string {
 					return customOpFormat[o]
 				},
 				GetSupportedOps: CustomGetSupportedOps,

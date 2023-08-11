@@ -926,7 +926,7 @@ func TestParse(t *testing.T) {
 					}
 				}{},
 				FieldSep: ".",
-				GetDBOp: func(o Op, _ *Field) string {
+				GetDBOp: func(o Op, f *FieldMeta) string {
 					if o == EQ {
 						return "eq"
 					}
