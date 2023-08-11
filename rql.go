@@ -549,7 +549,7 @@ func (p *parseState) field(f *Field, v interface{}) {
 // fmtOp create a string for the operation with a placeholder.
 // for example: "name = ?", or "age >= ?".
 func (p *Parser) fmtOp(f *Field, op Op) string {
-	return f.Name + " " + p.GetDBOp(op, f) + " ?"
+	return p.colName(f.Name) + " " + p.GetDBOp(op, f) + " ?"
 }
 
 // colName formats the query field to database column name in cases the user configured a custom
