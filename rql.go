@@ -205,7 +205,8 @@ func (p *Parser) ParseQuery(q *Query) (pr *Params, err error) {
 //	Username => username
 //	FullName => full_name
 //	HTTPCode => http_code
-func Column(s string) string {
+func ColumnFn(s string) string {
+	s = strings.Replace(s, ".", "_", -1)
 	var b strings.Builder
 	for i := 0; i < len(s); i++ {
 		r := rune(s[i])
@@ -220,6 +221,29 @@ func Column(s string) string {
 		b.WriteRune(unicode.ToLower(r))
 	}
 	return b.String()
+}
+
+func NameFn(str string, sep string) string {
+	var buf bytes.Buffer
+
+	for i, r := range str {
+		if r == '.' {
+			buf.WriteRune(r)
+			continue
+		}
+
+		if unicode.IsUpper(r) {
+			if i > 0 && str[i-1] != '_' && str[i-1] != '.' && !unicode.IsUpper(rune(str[i-1])) {
+				buf.WriteRune('_')
+			} else if i > 0 && unicode.IsUpper(rune(str[i-1])) && i+1 < len(str) && unicode.IsUpper(r) && unicode.IsLower(rune(str[i+1])) {
+				buf.WriteRune('_')
+			}
+		}
+
+		buf.WriteRune(unicode.ToLower(r))
+	}
+
+	return buf.String()
 }
 
 // init initializes the parser parsing state. it scans the fields
@@ -259,6 +283,7 @@ func (p *Parser) init() error {
 // in the parser according to its type and the options that were set on the tag.
 func (p *Parser) parseField(sf reflect.StructField) error {
 	f := &field{
+		Name:      p.NameFn(sf.Name, p.FieldSep),
 		Column:    p.ColumnFn(sf.Name),
 		CovertFn:  valueFn,
 		FilterOps: make(map[string]bool),
@@ -290,15 +315,6 @@ func (p *Parser) parseField(sf reflect.StructField) error {
 			}
 		default:
 			p.Log("Ignoring unknown option %q in struct tag", opt)
-		}
-	}
-
-	// backwards compatible
-	if f.Name == "" {
-		if p.NameFn != nil {
-			f.Name = p.NameFn(sf.Name)
-		} else {
-			f.Name = f.Column
 		}
 	}
 
@@ -394,9 +410,10 @@ func (p *Parser) sort(fields []string) string {
 			orderBy = order
 			field = field[1:]
 		}
-		expect(p.fields[field] != nil, "unrecognized key %q for sorting", field)
-		expect(p.fields[field].Sortable, "field %q is not sortable", field)
-		colName := p.colName(field)
+		f := p.fields[field]
+		expect(f != nil, "unrecognized key %q for sorting", field)
+		expect(f.Sortable, "field %q is not sortable", field)
+		colName := f.Column
 		if orderBy != "" {
 			colName += " " + orderBy
 		}
@@ -482,8 +499,7 @@ func (p *parseState) field(f *field, v interface{}) {
 // fmtOp create a string for the operation with a placeholder.
 // for example: "name = ?", or "age >= ?".
 func (p *Parser) fmtOp(field string, op Op) string {
-	colName := p.colName(field)
-	return colName + " " + op.SQL() + " ?"
+	return field + " " + op.SQL() + " ?"
 }
 
 // colName formats the query field to database column name in cases the user configured a custom
