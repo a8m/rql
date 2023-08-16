@@ -510,7 +510,8 @@ func (p *parseState) relOp(op Op, terms []interface{}) {
 	for _, t := range terms {
 		if i > 0 {
 			p.WriteByte(' ')
-			p.WriteString(p.GetDBOp(op, nil))
+			op, _ := p.GetDBStatement(op, nil) // AND
+			p.WriteString(op)
 			p.WriteByte(' ')
 		}
 		mt, ok := t.(map[string]interface{})
@@ -558,7 +559,8 @@ func (p *parseState) field(f *Field, v interface{}) {
 // fmtOp create a string for the operation with a placeholder.
 // for example: "name = ?", or "age >= ?".
 func (p *Parser) fmtOp(f *Field, op Op) string {
-	return p.colName(f.Name) + " " + p.GetDBOp(op, f.FieldMeta) + " ?"
+	dbOp, fmtStr := p.Config.GetDBStatement(op, f.FieldMeta)
+	return fmt.Sprintf(fmtStr, p.colName(f.Name), dbOp, "?")
 }
 
 // colName formats the query field to database column name in cases the user configured a custom

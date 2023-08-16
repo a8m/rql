@@ -148,8 +148,11 @@ type Config struct {
 	// DefaultSort is the default value for the 'Sort' field that returns when no sort expression is supplied by the caller.
 	// It defaults to an empty string slice.
 	DefaultSort []string
-	// Lets the user define how a rql op is translated to a db op.
-	GetDBOp func(Op, *FieldMeta) string
+	// Lets the user define how a rql op is translated to a db op. // Returns db operator and statement format string.
+	// TODO: I think this interface can be improved, I'm not sure exactly yet, need more use cases.
+	// Current edge case requiring format string is the `= any (?)` op. Any expects `()` around ? for casting over.
+	// Providing a format string fixes that, but is not very flexible, a template would be better.
+	GetDBStatement func(Op, *FieldMeta) (string, string)
 	// Lets the user define how a rql dir ('+','-') is translated to a db direction.
 	GetDBDir func(Direction) string
 	// Sets the validator function based on the type
@@ -174,9 +177,12 @@ func (c *Config) defaults() error {
 	if c.ColumnFn == nil {
 		c.ColumnFn = Column
 	}
-	if c.GetDBOp == nil {
-		c.GetDBOp = func(o Op, _ *FieldMeta) string {
-			return opFormat[o]
+	if c.GetDBStatement == nil {
+		c.GetDBStatement = func(o Op, _ *FieldMeta) (string, string) {
+			if o == Op("any") {
+				return opFormat[o], "%v %v (%v)"
+			}
+			return opFormat[o], "%v %v %v"
 		}
 	}
 	if c.GetDBDir == nil {

@@ -52,8 +52,11 @@ func TestParse2(t *testing.T) {
 					AliasMap StructAlias            `rql:"filter,column=alias_map"`
 				}{},
 				FieldSep: ".",
-				GetDBOp: func(o Op, f *FieldMeta) string {
-					return customOpFormat[o]
+				GetDBStatement: func(o Op, f *FieldMeta) (string, string) {
+					if o == Op("any") {
+						return customOpFormat[o], "%v %v (%v)"
+					}
+					return customOpFormat[o], "%v %v %v"
 				},
 				GetSupportedOps: CustomGetSupportedOps,
 				GetValidator:    CustomGetValidateFn,

@@ -926,12 +926,11 @@ func TestParse(t *testing.T) {
 					}
 				}{},
 				FieldSep: ".",
-				GetDBOp: func(o Op, f *FieldMeta) string {
+				GetDBStatement: func(o Op, f *FieldMeta) (string, string) {
 					if o == EQ {
-						return "eq"
+						return "eq", "%v %v %v"
 					}
-					return opFormat[o]
-
+					return opFormat[o], "%v %v %v"
 				},
 				GetDBDir: func(d Direction) string {
 					if d == ASC {
