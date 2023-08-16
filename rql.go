@@ -17,6 +17,7 @@ import (
 //go:generate easyjson -omit_empty -disallow_unknown_fields -snake_case rql.go
 
 // Query is the decoded result of the user input.
+//
 //easyjson:json
 type Query struct {
 	// Limit must be > 0 and <= to `LimitMaxValue`.
@@ -73,7 +74,6 @@ type Query struct {
 //		return nil, err
 //	}
 //	return users, nil
-//
 type Params struct {
 	// Limit represents the number of rows returned by the SELECT statement.
 	Limit int
@@ -104,8 +104,19 @@ func (p ParseError) Error() string {
 	return p.msg
 }
 
+type Validator func(Op, FieldMeta, interface{}) error
+type Converter func(Op, FieldMeta, interface{}) interface{}
+
 // field is a configuration of a struct field.
-type field struct {
+type Field struct {
+	*FieldMeta
+	// Validation for the type. for example, unit8 greater than or equal to 0.
+	ValidateFn Validator
+	// ConvertFn converts the given value to the type value.
+	CovertFn Converter
+}
+
+type FieldMeta struct {
 	// Name of the column.
 	Name string
 	// Has a "sort" option in the tag.
@@ -114,17 +125,17 @@ type field struct {
 	Filterable bool
 	// All supported operators for this field.
 	FilterOps map[string]bool
-	// Validation for the type. for example, unit8 greater than or equal to 0.
-	ValidateFn func(interface{}) error
-	// ConvertFn converts the given value to the type value.
-	CovertFn func(interface{}) interface{}
+	// Type of the field
+	Type reflect.Type
+	// Time Layout
+	Layout string
 }
 
 // A Parser parses various types. The result from the Parse method is a Param object.
 // It is safe for concurrent use by multiple goroutines except for configuration changes.
 type Parser struct {
 	Config
-	fields map[string]*field
+	fields map[string]*Field
 }
 
 // NewParser creates a new Parser. it fails if the configuration is invalid.
@@ -134,7 +145,7 @@ func NewParser(c Config) (*Parser, error) {
 	}
 	p := &Parser{
 		Config: c,
-		fields: make(map[string]*field),
+		fields: make(map[string]*Field),
 	}
 	if err := p.init(); err != nil {
 		return nil, err
@@ -203,7 +214,6 @@ func (p *Parser) ParseQuery(q *Query) (pr *Params, err error) {
 //	Username => username
 //	FullName => full_name
 //	HTTPCode => http_code
-//
 func Column(s string) string {
 	var b strings.Builder
 	for i := 0; i < len(s); i++ {
@@ -221,10 +231,119 @@ func Column(s string) string {
 	return b.String()
 }
 
+func GetSupportedOps(f *FieldMeta) []Op {
+	t := f.Type
+	switch t.Kind() {
+	case reflect.Bool:
+		return []Op{EQ, NEQ}
+	case reflect.String:
+		return []Op{EQ, NEQ, LT, LTE, GT, GTE, LIKE}
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		return []Op{EQ, NEQ, LT, LTE, GT, GTE}
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
+		return []Op{EQ, NEQ, LT, LTE, GT, GTE}
+	case reflect.Float32, reflect.Float64:
+		return []Op{EQ, NEQ, LT, LTE, GT, GTE}
+	case reflect.Struct:
+		switch v := reflect.Zero(t); v.Interface().(type) {
+		case sql.NullBool:
+			return []Op{EQ, NEQ}
+		case sql.NullString:
+			return []Op{EQ, NEQ}
+		case sql.NullInt64:
+			return []Op{EQ, NEQ, LT, LTE, GT, GTE}
+		case sql.NullFloat64:
+			return []Op{EQ, NEQ, LT, LTE, GT, GTE}
+		case time.Time:
+			return []Op{EQ, NEQ, LT, LTE, GT, GTE}
+		default:
+			if v.Type().ConvertibleTo(reflect.TypeOf(time.Time{})) {
+				return []Op{EQ, NEQ, LT, LTE, GT, GTE}
+			}
+			return []Op{}
+		}
+	default:
+		return []Op{}
+	}
+}
+
+func GetConverterFn(f *FieldMeta) Converter {
+	layout := f.Layout
+	t := f.Type
+	switch t.Kind() {
+	case reflect.Bool:
+		return valueFn
+	case reflect.String:
+		return valueFn
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		return convertInt
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
+		return convertInt
+	case reflect.Float32, reflect.Float64:
+		return valueFn
+	case reflect.Struct:
+		switch v := reflect.Zero(t); v.Interface().(type) {
+		case sql.NullBool:
+			return valueFn
+		case sql.NullString:
+			return valueFn
+		case sql.NullInt64:
+			return convertInt
+		case sql.NullFloat64:
+			return valueFn
+		case time.Time:
+			return convertTime(layout)
+		default:
+			if v.Type().ConvertibleTo(reflect.TypeOf(time.Time{})) {
+				return convertTime(layout)
+			}
+		}
+	}
+	return valueFn
+}
+
+func GetValidateFn(f *FieldMeta) Validator {
+	t := f.Type
+	layout := f.Layout
+	switch t.Kind() {
+	case reflect.Bool:
+		return validateBool
+	case reflect.String:
+		return validateString
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		return validateInt
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
+		return validateUInt
+	case reflect.Float32, reflect.Float64:
+		return validateFloat
+	case reflect.Struct:
+		switch v := reflect.Zero(t); v.Interface().(type) {
+		case sql.NullBool:
+			return validateBool
+		case sql.NullString:
+			return validateString
+		case sql.NullInt64:
+			return validateInt
+		case sql.NullFloat64:
+			return validateFloat
+		case time.Time:
+			return validateTime(layout)
+		default:
+			if !v.Type().ConvertibleTo(reflect.TypeOf(time.Time{})) {
+				return nil
+			}
+			return validateTime(layout)
+		}
+	default:
+		return nil
+	}
+}
+
 // init initializes the parser parsing state. it scans the fields
 // in a breath-first-search order and for each one of the field calls parseField.
 func (p *Parser) init() error {
-	t := indirect(reflect.TypeOf(p.Model))
+	t := reflect.TypeOf(p.Model)
+	t = indirect(t)
 	l := list.New()
 	for i := 0; i < t.NumField(); i++ {
 		l.PushFront(t.Field(i))
@@ -257,10 +376,12 @@ func (p *Parser) init() error {
 // parseField parses the given struct field tag, and add a rule
 // in the parser according to its type and the options that were set on the tag.
 func (p *Parser) parseField(sf reflect.StructField) error {
-	f := &field{
-		Name:      p.ColumnFn(sf.Name),
-		CovertFn:  valueFn,
-		FilterOps: make(map[string]bool),
+	f := &Field{
+		FieldMeta: &FieldMeta{
+			Name:      p.ColumnFn(sf.Name),
+			FilterOps: make(map[string]bool),
+		},
+		CovertFn: valueFn,
 	}
 	layout := time.RFC3339
 	opts := strings.Split(sf.Tag.Get(p.TagName), ",")
@@ -289,55 +410,16 @@ func (p *Parser) parseField(sf reflect.StructField) error {
 			p.Log("Ignoring unknown option %q in struct tag", opt)
 		}
 	}
-	var filterOps []Op
-	switch typ := indirect(sf.Type); typ.Kind() {
-	case reflect.Bool:
-		f.ValidateFn = validateBool
-		filterOps = append(filterOps, EQ, NEQ)
-	case reflect.String:
-		f.ValidateFn = validateString
-		filterOps = append(filterOps, EQ, NEQ, LT, LTE, GT, GTE, LIKE)
-	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-		f.ValidateFn = validateInt
-		f.CovertFn = convertInt
-		filterOps = append(filterOps, EQ, NEQ, LT, LTE, GT, GTE)
-	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
-		f.ValidateFn = validateUInt
-		f.CovertFn = convertInt
-		filterOps = append(filterOps, EQ, NEQ, LT, LTE, GT, GTE)
-	case reflect.Float32, reflect.Float64:
-		f.ValidateFn = validateFloat
-		filterOps = append(filterOps, EQ, NEQ, LT, LTE, GT, GTE)
-	case reflect.Struct:
-		switch v := reflect.Zero(typ); v.Interface().(type) {
-		case sql.NullBool:
-			f.ValidateFn = validateBool
-			filterOps = append(filterOps, EQ, NEQ)
-		case sql.NullString:
-			f.ValidateFn = validateString
-			filterOps = append(filterOps, EQ, NEQ)
-		case sql.NullInt64:
-			f.ValidateFn = validateInt
-			f.CovertFn = convertInt
-			filterOps = append(filterOps, EQ, NEQ, LT, LTE, GT, GTE)
-		case sql.NullFloat64:
-			f.ValidateFn = validateFloat
-			filterOps = append(filterOps, EQ, NEQ, LT, LTE, GT, GTE)
-		case time.Time:
-			f.ValidateFn = validateTime(layout)
-			f.CovertFn = convertTime(layout)
-			filterOps = append(filterOps, EQ, NEQ, LT, LTE, GT, GTE)
-		default:
-			if !v.Type().ConvertibleTo(reflect.TypeOf(time.Time{})) {
-				return fmt.Errorf("rql: field type for %q is not supported", sf.Name)
-			}
-			f.ValidateFn = validateTime(layout)
-			f.CovertFn = convertTime(layout)
-			filterOps = append(filterOps, EQ, NEQ, LT, LTE, GT, GTE)
-		}
-	default:
+	f.Layout = layout
+
+	f.Type = indirect(sf.Type)
+	filterOps := p.Config.GetSupportedOps(f.FieldMeta)
+	if len(filterOps) == 0 {
 		return fmt.Errorf("rql: field type for %q is not supported", sf.Name)
 	}
+	f.CovertFn = p.Config.GetConverter(f.FieldMeta)
+	f.ValidateFn = p.Config.GetValidator(f.FieldMeta)
+
 	for _, op := range filterOps {
 		f.FilterOps[p.op(op)] = true
 	}
@@ -375,12 +457,14 @@ func (p *Parser) sort(fields []string) string {
 	sortParams := make([]string, len(fields))
 	for i, field := range fields {
 		expect(field != "", "sort field can not be empty")
+
 		var orderBy string
-		// if the sort field prefixed by an order indicator.
-		if order, ok := sortDirection[field[0]]; ok {
-			orderBy = order
+		f0 := field[0]
+		if f0 == byte(ASC) || f0 == byte(DESC) {
+			orderBy = p.GetDBDir(Direction(f0))
 			field = field[1:]
 		}
+
 		expect(p.fields[field] != nil, "unrecognized key %q for sorting", field)
 		expect(p.fields[field].Sortable, "field %q is not sortable", field)
 		colName := p.colName(field)
@@ -408,8 +492,9 @@ func (p *parseState) and(f map[string]interface{}) {
 			expect(ok, "$and must be type array")
 			p.relOp(AND, terms)
 		case p.fields[k] != nil:
-			expect(p.fields[k].Filterable, "field %q is not filterable", k)
-			p.field(p.fields[k], v)
+			f := p.fields[k]
+			expect(f.Filterable, "field %q is not filterable", k)
+			p.field(f, v)
 		default:
 			expect(false, "unrecognized key %q for filtering", k)
 		}
@@ -425,7 +510,8 @@ func (p *parseState) relOp(op Op, terms []interface{}) {
 	for _, t := range terms {
 		if i > 0 {
 			p.WriteByte(' ')
-			p.WriteString(op.SQL())
+			op, _ := p.GetDBStatement(op, nil) // AND
+			p.WriteString(op)
 			p.WriteByte(' ')
 		}
 		mt, ok := t.(map[string]interface{})
@@ -438,13 +524,16 @@ func (p *parseState) relOp(op Op, terms []interface{}) {
 	}
 }
 
-func (p *parseState) field(f *field, v interface{}) {
+func (p *parseState) field(f *Field, v interface{}) {
 	terms, ok := v.(map[string]interface{})
 	// default equality check.
 	if !ok {
-		must(f.ValidateFn(v), "invalid datatype for field %q", f.Name)
-		p.WriteString(p.fmtOp(f.Name, EQ))
-		p.values = append(p.values, f.CovertFn(v))
+		op := EQ
+		err := f.ValidateFn(op, *f.FieldMeta, v)
+		must(err, "invalid datatype for field %q", f.Name)
+		p.WriteString(p.fmtOp(f, op))
+		arg := f.CovertFn(op, *f.FieldMeta, v)
+		p.values = append(p.values, arg)
 	}
 	var i int
 	if len(terms) > 1 {
@@ -454,10 +543,12 @@ func (p *parseState) field(f *field, v interface{}) {
 		if i > 0 {
 			p.WriteString(" AND ")
 		}
+		op := Op(opName[1:])
 		expect(f.FilterOps[opName], "can not apply op %q on field %q", opName, f.Name)
-		must(f.ValidateFn(opVal), "invalid datatype or format for field %q", f.Name)
-		p.WriteString(p.fmtOp(f.Name, Op(opName[1:])))
-		p.values = append(p.values, f.CovertFn(opVal))
+		must(f.ValidateFn(op, *f.FieldMeta, opVal), "invalid datatype or format for field %q", f.Name)
+		p.WriteString(p.fmtOp(f, op))
+		arg := f.CovertFn(op, *f.FieldMeta, opVal)
+		p.values = append(p.values, arg)
 		i++
 	}
 	if len(terms) > 1 {
@@ -467,9 +558,9 @@ func (p *parseState) field(f *field, v interface{}) {
 
 // fmtOp create a string for the operation with a placeholder.
 // for example: "name = ?", or "age >= ?".
-func (p *Parser) fmtOp(field string, op Op) string {
-	colName := p.colName(field)
-	return colName + " " + op.SQL() + " ?"
+func (p *Parser) fmtOp(f *Field, op Op) string {
+	dbOp, fmtStr := p.Config.GetDBStatement(op, f.FieldMeta)
+	return fmt.Sprintf(fmtStr, p.colName(f.Name), dbOp, "?")
 }
 
 // colName formats the query field to database column name in cases the user configured a custom
@@ -520,7 +611,7 @@ func errorType(v interface{}, expected string) error {
 }
 
 // validate that the underlined element of given interface is a boolean.
-func validateBool(v interface{}) error {
+func validateBool(op Op, f FieldMeta, v interface{}) error {
 	if _, ok := v.(bool); !ok {
 		return errorType(v, "bool")
 	}
@@ -528,7 +619,7 @@ func validateBool(v interface{}) error {
 }
 
 // validate that the underlined element of given interface is a string.
-func validateString(v interface{}) error {
+func validateString(op Op, f FieldMeta, v interface{}) error {
 	if _, ok := v.(string); !ok {
 		return errorType(v, "string")
 	}
@@ -536,7 +627,7 @@ func validateString(v interface{}) error {
 }
 
 // validate that the underlined element of given interface is a float.
-func validateFloat(v interface{}) error {
+func validateFloat(op Op, f FieldMeta, v interface{}) error {
 	if _, ok := v.(float64); !ok {
 		return errorType(v, "float64")
 	}
@@ -544,7 +635,7 @@ func validateFloat(v interface{}) error {
 }
 
 // validate that the underlined element of given interface is an int.
-func validateInt(v interface{}) error {
+func validateInt(op Op, f FieldMeta, v interface{}) error {
 	n, ok := v.(float64)
 	if !ok {
 		return errorType(v, "int")
@@ -556,8 +647,8 @@ func validateInt(v interface{}) error {
 }
 
 // validate that the underlined element of given interface is an int and greater than 0.
-func validateUInt(v interface{}) error {
-	if err := validateInt(v); err != nil {
+func validateUInt(op Op, f FieldMeta, v interface{}) error {
+	if err := validateInt(op, f, v); err != nil {
 		return err
 	}
 	if v.(float64) < 0 {
@@ -567,8 +658,8 @@ func validateUInt(v interface{}) error {
 }
 
 // validate that the underlined element of this interface is a "datetime" string.
-func validateTime(layout string) func(interface{}) error {
-	return func(v interface{}) error {
+func validateTime(layout string) Validator {
+	return func(_ Op, _ FieldMeta, v interface{}) error {
 		s, ok := v.(string)
 		if !ok {
 			return errorType(v, "string")
@@ -579,20 +670,20 @@ func validateTime(layout string) func(interface{}) error {
 }
 
 // convert float to int.
-func convertInt(v interface{}) interface{} {
+func convertInt(op Op, f FieldMeta, v interface{}) interface{} {
 	return int(v.(float64))
 }
 
 // convert string to time object.
-func convertTime(layout string) func(interface{}) interface{} {
-	return func(v interface{}) interface{} {
+func convertTime(layout string) func(Op, FieldMeta, interface{}) interface{} {
+	return func(_ Op, _ FieldMeta, v interface{}) interface{} {
 		t, _ := time.Parse(layout, v.(string))
 		return t
 	}
 }
 
 // nop converter.
-func valueFn(v interface{}) interface{} {
+func valueFn(op Op, f FieldMeta, v interface{}) interface{} {
 	return v
 }
 

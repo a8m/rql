@@ -8,14 +8,12 @@ import (
 
 // Op is a filter operator used by rql.
 type Op string
-
-// SQL returns the SQL representation of the operator.
-func (o Op) SQL() string {
-	return opFormat[o]
-}
+type Direction byte
 
 // Operators that support by rql.
 const (
+	ASC  = Direction('+')
+	DESC = Direction('-')
 	EQ   = Op("eq")   // =
 	NEQ  = Op("neq")  // <>
 	LT   = Op("lt")   // <
@@ -43,9 +41,9 @@ var (
 	// A sorting expression can be optionally prefixed with + or - to control the
 	// sorting direction, ascending or descending. For example, '+field' or '-field'.
 	// If the predicate is missing or empty then it defaults to '+'
-	sortDirection = map[byte]string{
-		'+': "asc",
-		'-': "desc",
+	sortDirection = map[Direction]string{
+		ASC:  "asc",
+		DESC: "desc",
 	}
 	opFormat = map[Op]string{
 		EQ:   "=",
@@ -59,6 +57,20 @@ var (
 		AND:  "AND",
 	}
 )
+
+func GetAllOps() []Op {
+	return []Op{
+		EQ,
+		NEQ,
+		LT,
+		GT,
+		LTE,
+		GTE,
+		LIKE,
+		OR,
+		AND,
+	}
+}
 
 // Config is the configuration for the parser.
 type Config struct {
@@ -136,6 +148,19 @@ type Config struct {
 	// DefaultSort is the default value for the 'Sort' field that returns when no sort expression is supplied by the caller.
 	// It defaults to an empty string slice.
 	DefaultSort []string
+	// Lets the user define how a rql op is translated to a db op. // Returns db operator and statement format string.
+	// TODO: I think this interface can be improved, I'm not sure exactly yet, need more use cases.
+	// Current edge case requiring format string is the `= any (?)` op. Any expects `()` around ? for casting over.
+	// Providing a format string fixes that, but is not very flexible, a template would be better.
+	GetDBStatement func(Op, *FieldMeta) (string, string)
+	// Lets the user define how a rql dir ('+','-') is translated to a db direction.
+	GetDBDir func(Direction) string
+	// Sets the validator function based on the type
+	GetValidator func(f *FieldMeta) Validator
+	// Sets the convertor function based on the type
+	GetConverter func(f *FieldMeta) Converter
+	// Sets the supported operations for that type
+	GetSupportedOps func(f *FieldMeta) []Op
 }
 
 // defaults sets the default configuration of Config.
@@ -151,6 +176,28 @@ func (c *Config) defaults() error {
 	}
 	if c.ColumnFn == nil {
 		c.ColumnFn = Column
+	}
+	if c.GetDBStatement == nil {
+		c.GetDBStatement = func(o Op, _ *FieldMeta) (string, string) {
+			if o == Op("any") {
+				return opFormat[o], "%v %v (%v)"
+			}
+			return opFormat[o], "%v %v %v"
+		}
+	}
+	if c.GetDBDir == nil {
+		c.GetDBDir = func(d Direction) string {
+			return sortDirection[d]
+		}
+	}
+	if c.GetConverter == nil {
+		c.GetConverter = GetConverterFn
+	}
+	if c.GetValidator == nil {
+		c.GetValidator = GetValidateFn
+	}
+	if c.GetSupportedOps == nil {
+		c.GetSupportedOps = GetSupportedOps
 	}
 	defaultString(&c.TagName, DefaultTagName)
 	defaultString(&c.OpPrefix, DefaultOpPrefix)

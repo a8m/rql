@@ -2,7 +2,9 @@ package rql
 
 import (
 	"database/sql"
+	"fmt"
 	"reflect"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -912,6 +914,46 @@ func TestParse(t *testing.T) {
 			}`),
 			wantErr: true,
 		},
+		{
+			name: "custom db symbols",
+			conf: Config{
+				Model: struct {
+					ID           string `rql:"filter"`
+					FullName     string `rql:"filter"`
+					HTTPUrl      string `rql:"filter"`
+					NestedStruct struct {
+						UUID string `rql:"filter"`
+					}
+				}{},
+				FieldSep: ".",
+				GetDBStatement: func(o Op, f *FieldMeta) (string, string) {
+					if o == EQ {
+						return "eq", "%v %v %v"
+					}
+					return opFormat[o], "%v %v %v"
+				},
+				GetDBDir: func(d Direction) string {
+					if d == ASC {
+						return "ASC"
+					}
+					return "DESC"
+				},
+			},
+			input: []byte(`{
+				"filter": {
+					"id": "id",
+					"full_name": "full_name",
+					"http_url": "http_url",
+					"nested_struct.uuid": "uuid"
+				}
+			}`),
+			wantOut: &Params{
+				Limit:      25,
+				FilterExp:  "id eq ? AND full_name eq ? AND http_url eq ? AND nested_struct_uuid eq ?",
+				FilterArgs: []interface{}{"id", "full_name", "http_url", "uuid"},
+				Sort:       "",
+			},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -950,8 +992,9 @@ func assertParams(t *testing.T, got *Params, want *Params) {
 	if !equalExp(got.FilterExp, want.FilterExp) || !equalExp(want.FilterExp, got.FilterExp) {
 		t.Fatalf("filter expr:\n\tgot: %q\n\twant %q", got.FilterExp, want.FilterExp)
 	}
-	if !equalArgs(got.FilterArgs, got.FilterArgs) || !equalArgs(want.FilterArgs, got.FilterArgs) {
-		t.Fatalf("filter args:\n\tgot: %v\n\twant %v", got.FilterArgs, want.FilterArgs)
+	err := deepEqualIgnoreOrder(got.FilterArgs, want.FilterArgs)
+	if err != nil {
+		t.Fatalf("filter args:\n\tgot: %v\n\twant %v %v", got.FilterArgs, want.FilterArgs, err.Error())
 	}
 }
 
@@ -1019,5 +1062,57 @@ func split(e string) []string {
 
 func mustParseTime(layout, s string) time.Time {
 	t, _ := time.Parse(layout, s)
+
 	return t
+}
+
+func compareInterface(a, b interface{}) bool {
+	// If either of the values is nil, handle them first.
+	if a == nil && b != nil {
+		return true // consider nil as the smallest value
+	}
+	if a != nil && b == nil {
+		return false
+	}
+	if a == nil && b == nil {
+		return false // doesn't matter which one comes first if both are nil
+	}
+
+	// If they are slices, compare their sorted string representations.
+	if reflect.TypeOf(a).Kind() == reflect.Slice && reflect.TypeOf(b).Kind() == reflect.Slice {
+		return fmt.Sprint(a) < fmt.Sprint(b)
+	}
+
+	// Otherwise, use the regular string representation for comparison.
+	return fmt.Sprint(a) < fmt.Sprint(b)
+}
+
+func deepSort(i interface{}) interface{} {
+	switch v := i.(type) {
+	case []interface{}:
+		newSlice := make([]interface{}, len(v))
+		for j, item := range v {
+			newSlice[j] = deepSort(item)
+		}
+		sort.SliceStable(newSlice, func(i, j int) bool {
+			return compareInterface(newSlice[i], newSlice[j])
+		})
+		return newSlice
+	default:
+		return i
+	}
+}
+
+func deepEqualIgnoreOrder(a, b interface{}) error {
+	// Explicitly handle nil cases
+	if (a == nil && b != nil) || (a != nil && b == nil) {
+		return fmt.Errorf("differences found: A=%v, B=%v", a, b)
+	}
+
+	sortedA := deepSort(a)
+	sortedB := deepSort(b)
+	if !reflect.DeepEqual(sortedA, sortedB) {
+		return fmt.Errorf("differences found: A=%v, B=%v", sortedA, sortedB)
+	}
+	return nil
 }
