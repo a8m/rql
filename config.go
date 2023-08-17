@@ -110,6 +110,14 @@ type Config struct {
 	// 	}
 	//
 	FieldSep string
+	// NameFn is a function that translates the incoming filter query field name to the struct field name.
+	// For example, given the following query fields and their column names:
+	//
+	//	fullName => "full_name"
+	// 	httpPort => "http_port"
+	//
+	// By default the field name is expected to match the column.
+	NameFn func(string, string) string
 	// ColumnFn is the function that translate the struct field string into a table column.
 	// For example, given the following fields and their column names:
 	//
@@ -150,7 +158,10 @@ func (c *Config) defaults() error {
 		c.Log = log.Printf
 	}
 	if c.ColumnFn == nil {
-		c.ColumnFn = Column
+		c.ColumnFn = ColumnFn
+	}
+	if c.NameFn == nil {
+		c.NameFn = NameFn
 	}
 	defaultString(&c.TagName, DefaultTagName)
 	defaultString(&c.OpPrefix, DefaultOpPrefix)
