@@ -583,6 +583,37 @@ func TestParse(t *testing.T) {
 			},
 		},
 		{
+			name: "select unknown",
+			conf: Config{
+				Model: struct {
+					Age  int    `rql:"filter,sort"`
+					Name string `rql:"filter,sort"`
+				}{},
+				DefaultLimit: 25,
+			},
+			input: []byte(`{
+				"select": ["foo"]
+			}`),
+			wantErr: true,
+		},
+		{
+			name: "select unknown",
+			conf: Config{
+				Model: struct {
+					Age  int    `rql:"filter,sort"`
+					Name string `rql:"filter,sort,column=foo"`
+				}{},
+				DefaultLimit: 25,
+			},
+			input: []byte(`{
+				"select": ["foo"]
+			}`),
+			wantOut: &Params{
+				Select: "foo",
+				Limit:  25,
+			},
+		},
+		{
 			name: "custom column name",
 			conf: Config{
 				Model: struct {
