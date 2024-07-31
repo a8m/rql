@@ -105,7 +105,7 @@ func (p ParseError) Error() string {
 }
 
 // field is a configuration of a struct field.
-type field struct {
+type FieldMeta struct {
 	// Name of the column.
 	Name string
 	// Has a "sort" option in the tag.
@@ -114,6 +114,9 @@ type field struct {
 	Filterable bool
 	// All supported operators for this field.
 	FilterOps map[string]bool
+}
+type Field struct {
+	*FieldMeta
 	// Validation for the type. for example, unit8 greater than or equal to 0.
 	ValidateFn func(interface{}) error
 	// ConvertFn converts the given value to the type value.
@@ -124,7 +127,7 @@ type field struct {
 // It is safe for concurrent use by multiple goroutines except for configuration changes.
 type Parser struct {
 	Config
-	fields map[string]*field
+	fields map[string]*Field
 }
 
 // NewParser creates a new Parser. it fails if the configuration is invalid.
@@ -134,10 +137,27 @@ func NewParser(c Config) (*Parser, error) {
 	}
 	p := &Parser{
 		Config: c,
-		fields: make(map[string]*field),
+		fields: make(map[string]*Field),
 	}
 	if err := p.init(); err != nil {
 		return nil, err
+	}
+	return p, nil
+}
+
+// Does not use config.Model, gets config from Fields)
+func NewParserF(c Config, fields []*Field) (*Parser, error) {
+	if err := c.defaults(); err != nil {
+		return nil, err
+	}
+
+	m := make(map[string]*Field, len(fields))
+	for _, v := range fields {
+		m[v.Name] = v
+	}
+	p := &Parser{
+		Config: c,
+		fields: m,
 	}
 	return p, nil
 }
@@ -200,6 +220,14 @@ func (p *Parser) ParseQuery(q *Query) (pr *Params, err error) {
 	return
 }
 
+func (p *Parser) GetFields() []*Field {
+	fields := make([]*Field, 0, len(p.fields))
+	for _, v := range p.fields {
+		fields = append(fields, v)
+	}
+	return fields
+}
+
 // Column is the default function that converts field name into a database column.
 // It used to convert the struct fields into their database names. For example:
 //
@@ -259,10 +287,12 @@ func (p *Parser) init() error {
 // parseField parses the given struct field tag, and add a rule
 // in the parser according to its type and the options that were set on the tag.
 func (p *Parser) parseField(sf reflect.StructField) error {
-	f := &field{
-		Name:      p.ColumnFn(sf.Name),
-		CovertFn:  valueFn,
-		FilterOps: make(map[string]bool),
+	f := &Field{
+		FieldMeta: &FieldMeta{
+			Name:      p.ColumnFn(sf.Name),
+			FilterOps: make(map[string]bool),
+		},
+		CovertFn: valueFn,
 	}
 	layout := time.RFC3339
 	opts := strings.Split(sf.Tag.Get(p.TagName), ",")
@@ -440,7 +470,7 @@ func (p *parseState) relOp(op Op, terms []interface{}) {
 	}
 }
 
-func (p *parseState) field(f *field, v interface{}) {
+func (p *parseState) field(f *Field, v interface{}) {
 	terms, ok := v.(map[string]interface{})
 	// default equality check.
 	if !ok {
