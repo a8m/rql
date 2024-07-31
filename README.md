@@ -68,7 +68,7 @@ func GetUsers(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
-	err = db.Where(p.FilterExp, p.FilterArgs).
+	err = db.Where(p.FilterExp, p.FilterArgs...).
 		Offset(p.Offset).
 		Limit(p.Limit).
 		Order(p.Sort).
@@ -278,7 +278,7 @@ users, err = client.User.Query().
 must(err, "failed to query ent")
 
 // gorm
-err = db.Where(p.FilterExp, p.FilterArgs).
+err = db.Where(p.FilterExp, p.FilterArgs...).
 	Offset(p.Offset).
 	Limit(p.Limit).
 	Order(p.Sort).
